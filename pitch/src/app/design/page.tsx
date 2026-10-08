@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, Skeleton } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ContrastAudit } from "./contrast-audit";
 
 const colors = [
   "background", "card", "muted", "secondary", "accent", "primary",
@@ -26,6 +27,11 @@ export default function DesignPage() {
             </div>
           ))}
         </div>
+      </section>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium">Contrast (WCAG AA)</h2>
+        <p className="text-sm text-muted-foreground">Computed from the tokens in globals.css. Text needs 4.5:1, the focus ring 3:1.</p>
+        <ContrastAudit />
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Type</h2>

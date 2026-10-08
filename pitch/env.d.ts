@@ -3,3 +3,8 @@ declare namespace Cloudflare {
     DB: D1Database;
   }
 }
+
+declare module "*?raw" {
+  const content: string;
+  export default content;
+}
