@@ -15,6 +15,9 @@ export function BusinessForm({ business }: { business?: Business }) {
   const [accent, setAccent] = useState(business?.accent ?? "#8B5CF6");
   const [prefix, setPrefix] = useState(business?.numberPrefix ?? "");
   const next = business?.nextNumber ?? 1;
+  const [removeLogo, setRemoveLogo] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const logoSrc = picked ?? (business?.logoKey && !removeLogo ? `/logo/${business.id}?v=${business.logoKey}` : null);
 
   const err = (k: keyof typeof errors) =>
     errors[k] ? (
@@ -68,6 +71,31 @@ export function BusinessForm({ business }: { business?: Business }) {
           <Label htmlFor="defaultTermsMd">Default terms (markdown)</Label>
           <Textarea id="defaultTermsMd" name="defaultTermsMd" defaultValue={business?.defaultTermsMd ?? ""} className="min-h-32" />
         </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="logo">Logo (PNG, JPEG or WebP, up to 1 MB)</Label>
+          <Input
+            id="logo"
+            name="logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="h-auto py-2 max-md:h-auto"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              setPicked((old) => {
+                if (old) URL.revokeObjectURL(old);
+                return f ? URL.createObjectURL(f) : null;
+              });
+            }}
+            {...aria("logo")}
+          />
+          {err("logo")}
+          {business?.logoKey ? (
+            <label className="flex min-h-6 items-center gap-2 text-sm max-md:min-h-11">
+              <input type="checkbox" name="removeLogo" checked={removeLogo} onChange={(e) => setRemoveLogo(e.target.checked)} />
+              Remove current logo
+            </label>
+          ) : null}
+        </div>
         <div className="flex gap-2">
           <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save profile"}</Button>
           <Button variant="ghost" asChild><Link href="/settings">Cancel</Link></Button>
@@ -77,6 +105,8 @@ export function BusinessForm({ business }: { business?: Business }) {
       <aside aria-label="Preview" className="bg-card h-fit rounded-lg border p-4">
         <p className="text-muted-foreground text-xs">Client view header</p>
         <div className="mt-3 border-t-4 pt-3" style={{ borderColor: /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : undefined }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {logoSrc ? <img src={logoSrc} alt={`${name || "Business"} logo`} className="mb-3 max-h-12 w-auto max-w-full" /> : null}
           <p className="text-xl font-semibold">{name || "Business name"}</p>
           <p className="tabular text-muted-foreground mt-1 text-sm">
             {formatProposalNumber(prefix.toUpperCase() || "XXX", new Date().getFullYear(), next)}
