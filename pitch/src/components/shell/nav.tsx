@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Palette, Users } from "lucide-react";
+import { LayoutDashboard, Palette, Settings, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/design", label: "Design", icon: Palette },
 ];
 
@@ -40,7 +41,7 @@ export function SidebarNav() {
 export function BottomNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-3 border-t bg-sidebar md:hidden">
+    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-flow-col auto-cols-fr border-t bg-sidebar md:hidden">
       {navItems.map(({ href, label, icon: Icon }) => (
         <Link
           key={href}
