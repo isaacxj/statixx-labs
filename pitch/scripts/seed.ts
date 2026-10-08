@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { getPlatformProxy } from "wrangler";
-import { businesses, clients, proposals } from "../src/server/db/schema";
+import { businesses, clients, proposals, sections } from "../src/server/db/schema";
 
 const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>();
 const db = drizzle(env.DB);
 
+await db.delete(sections);
 await db.delete(proposals);
 await db.delete(clients);
 await db.delete(businesses);
@@ -35,5 +36,12 @@ await db.batch([
   db.update(businesses).set({ nextNumber: 2 }).where(eq(businesses.id, apt.id)),
 ]);
 
-console.log("Seeded 3 businesses, 3 clients and 3 proposals");
+const [first] = await db.select().from(proposals).orderBy(proposals.id);
+await db.insert(sections).values([
+  { proposalId: first.id, position: 1, title: "Overview", bodyMd: "We will redesign the Northwind Dental site so patients can **book online** in under a minute.\n\n- Faster, mobile-first pages\n- Online booking\n- Clear pricing for new patients" },
+  { proposalId: first.id, position: 2, title: "Timeline", bodyMd: "1. Discovery, week 1\n2. Design, weeks 2-3\n3. Build and launch, weeks 4-6" },
+  { proposalId: first.id, position: 3, title: "Terms", bodyMd: "50% due at kickoff, 50% on launch. Questions? Email [hello@statixx.example](mailto:hello@statixx.example)." },
+]);
+
+console.log("Seeded 3 businesses, 3 clients, 3 proposals and 3 sections");
 await dispose();

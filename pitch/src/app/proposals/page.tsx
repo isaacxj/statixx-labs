@@ -96,7 +96,7 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
               {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-accent transition-colors">
                   <td className="tabular px-4 py-3 font-mono text-[13px] whitespace-nowrap">{r.number}</td>
-                  <td className="px-4 py-3 font-medium">{r.title}</td>
+                  <td className="px-4 py-3 font-medium"><Link href={`/proposals/${r.id}`} className="hover:underline">{r.title}</Link></td>
                   <td className="px-4 py-3 text-muted-foreground">{r.clientName}{r.clientCompany ? ` · ${r.clientCompany}` : ""}</td>
                   <td className="px-4 py-3 text-muted-foreground">{r.businessName}</td>
                   <td className="px-4 py-3"><Badge variant={statusBadge[r.status]}>{r.status}</Badge></td>

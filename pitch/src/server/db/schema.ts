@@ -64,6 +64,20 @@ export const proposals = sqliteTable(
   (t) => [uniqueIndex("proposals_number_unique").on(t.number)],
 );
 
+export const SECTION_KINDS = ["text", "pricing"] as const;
+export type SectionKind = (typeof SECTION_KINDS)[number];
+
+export const sections = sqliteTable("sections", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proposalId: integer("proposal_id").notNull().references(() => proposals.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  kind: text("kind", { enum: SECTION_KINDS }).notNull().default("text"),
+  title: text("title").notNull().default(""),
+  bodyMd: text("body_md").notNull().default(""),
+  ...timestamps,
+});
+
 export type Business = typeof businesses.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
+export type Section = typeof sections.$inferSelect;

@@ -2,7 +2,8 @@ import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
-import { businesses, clients, proposals, type ProposalStatus } from "./schema";
+import { cleanSection, moveId } from "@/lib/section-form";
+import { businesses, clients, proposals, sections, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -114,4 +115,66 @@ export async function createProposal(input: { title: string; businessId: number;
     }),
   ]);
   return number;
+}
+
+export async function getProposal(id: number) {
+  const [row] = await getDb()
+    .select({
+      id: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      status: proposals.status,
+      clientName: clients.name,
+      clientCompany: clients.company,
+      businessName: businesses.name,
+    })
+    .from(proposals)
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+    .where(eq(proposals.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function listSections(proposalId: number) {
+  return getDb().select().from(sections).where(eq(sections.proposalId, proposalId)).orderBy(asc(sections.position), asc(sections.id));
+}
+
+export async function addSection(proposalId: number, input: { title: string; bodyMd: string } = { title: "Untitled section", bodyMd: "" }) {
+  const db = getDb();
+  const [last] = await db
+    .select({ n: sql<number>`coalesce(max(${sections.position}), 0)` })
+    .from(sections)
+    .where(eq(sections.proposalId, proposalId));
+  const [row] = await db
+    .insert(sections)
+    .values({ proposalId, position: last.n + 1, kind: "text", ...cleanSection(input) })
+    .returning({ id: sections.id });
+  return row.id;
+}
+
+export async function updateSection(id: number, proposalId: number, input: { title: string; bodyMd: string }) {
+  await getDb()
+    .update(sections)
+    .set(cleanSection(input))
+    .where(and(eq(sections.id, id), eq(sections.proposalId, proposalId)));
+}
+
+/** Deletes a section and closes the gap in positions in one batch. */
+export async function deleteSection(id: number, proposalId: number) {
+  const db = getDb();
+  const rest = (await listSections(proposalId)).filter((s) => s.id !== id);
+  await db.batch([
+    db.delete(sections).where(and(eq(sections.id, id), eq(sections.proposalId, proposalId))),
+    ...rest.map((s, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, s.id))),
+  ]);
+}
+
+export async function moveSection(id: number, proposalId: number, dir: -1 | 1) {
+  const db = getDb();
+  const current = await listSections(proposalId);
+  const next = moveId(current.map((s) => s.id), id, dir);
+  if (!next) return;
+  const [first, ...rest] = next.map((sid, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, sid)));
+  await db.batch([first, ...rest]);
 }
