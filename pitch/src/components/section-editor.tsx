@@ -6,16 +6,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
 import { cn } from "@/lib/utils";
-import { addSectionAction, deleteSectionAction, moveSectionAction, saveSectionAction } from "@/app/proposals/[id]/actions";
+import { PricingPanel } from "@/components/pricing-panel";
+import { PricingTotals } from "@/components/pricing-totals";
+import type { LineItem } from "@/server/db/schema";
+import { addPricingSectionAction, addSectionAction, deleteSectionAction, moveSectionAction, saveSectionAction } from "@/app/proposals/[id]/actions";
 
-type Item = { id: number; title: string; bodyMd: string };
+type Item = { id: number; kind: "text" | "pricing"; title: string; bodyMd: string };
+type Terms = { discountBp: number; taxRateBp: number };
+const toItem = ({ id, kind, title, bodyMd }: Item): Item => ({ id, kind, title, bodyMd });
 type Save = "saved" | "dirty" | "saving" | "error";
 
 const AUTOSAVE_MS = 700;
 const saveLabel: Record<Save, string> = { saved: "Saved", dirty: "Unsaved changes", saving: "Saving…", error: "Couldn't save. Retrying on next edit." };
 
-export function SectionEditor({ proposalId, initial }: { proposalId: number; initial: Item[] }) {
-  const [items, setItems] = useState<Item[]>(() => initial.map(({ id, title, bodyMd }) => ({ id, title, bodyMd })));
+type Props = {
+  proposalId: number;
+  initial: Item[];
+  initialLines: LineItem[];
+  currency: "USD" | "CAD";
+  initialTerms: Terms;
+};
+
+export function SectionEditor({ proposalId, initial, initialLines, currency, initialTerms }: Props) {
+  const [items, setItems] = useState<Item[]>(() => initial.map(toItem));
+  const [lines, setLines] = useState<LineItem[]>(initialLines);
+  const [terms, setTerms] = useState<Terms>(initialTerms);
   const [selectedId, setSelectedId] = useState<number | null>(initial[0]?.id ?? null);
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [save, setSave] = useState<Save>("saved");
@@ -55,7 +70,9 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
     timer.current = setTimeout(() => void flush(), AUTOSAVE_MS);
   };
 
-  const apply = (next: Item[]) => setItems(next.map(({ id, title, bodyMd }) => ({ id, title, bodyMd })));
+  const apply = (next: Item[]) => setItems(next.map(toItem));
+  const pricingSaving = (saving: boolean) => setSave(saving ? "saving" : "saved");
+  const hasPricing = items.some((i) => i.kind === "pricing");
 
   const structural = (run: () => Promise<void>) =>
     startTransition(async () => {
@@ -70,7 +87,7 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
   return (
     <div className="grid items-start gap-6 md:grid-cols-[16rem_1fr]">
       <aside aria-label="Section outline" className="bg-card flex flex-col gap-2 rounded-md border p-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium">Sections</h2>
           <Button
             size="sm"
@@ -85,6 +102,20 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
             }
           >
             <Plus />Add text
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              structural(async () => {
+                const res = await addPricingSectionAction(proposalId);
+                apply(res.sections);
+                setLines(res.lines);
+                if (res.addedId) setSelectedId(res.addedId);
+              })
+            }
+          >
+            <Plus />Add pricing
           </Button>
         </div>
         {items.length === 0 ? (
@@ -152,7 +183,7 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
               </Button>
             </div>
             <div className="flex items-center justify-between">
-              <div role="tablist" aria-label="Editor mode" className="bg-muted inline-flex rounded-sm p-0.5">
+              {selected.kind === "text" ? <div role="tablist" aria-label="Editor mode" className="bg-muted inline-flex rounded-sm p-0.5">
                 {(["write", "preview"] as const).map((m) => (
                   <button
                     key={m}
@@ -165,10 +196,12 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
                     {m}
                   </button>
                 ))}
-              </div>
+              </div> : <span />}
               <p role="status" aria-live="polite" className={cn("text-xs", save === "error" ? "text-destructive" : "text-muted-foreground")}>{saveLabel[save]}</p>
             </div>
-            {mode === "write" ? (
+            {selected.kind === "pricing" ? (
+              <PricingPanel proposalId={proposalId} sectionId={selected.id} currency={currency} lines={lines} onLines={setLines} onSaving={pricingSaving} />
+            ) : mode === "write" ? (
               <textarea
                 value={selected.bodyMd}
                 onChange={(e) => edit({ bodyMd: e.target.value })}
@@ -200,6 +233,19 @@ export function SectionEditor({ proposalId, initial }: { proposalId: number; ini
           </div>
         )}
       </section>
+      {hasPricing ? (
+        <div className="md:col-span-2">
+          <PricingTotals
+            proposalId={proposalId}
+            currency={currency}
+            lines={lines}
+            discountBp={terms.discountBp}
+            taxRateBp={terms.taxRateBp}
+            onTerms={setTerms}
+            onSaving={pricingSaving}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

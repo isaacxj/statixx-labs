@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SectionEditor } from "@/components/section-editor";
-import { getProposal, listSections } from "@/server/db/queries";
+import { getProposal, listLineItems, listSections } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
   const id = Number((await params).id);
   const proposal = Number.isInteger(id) && id > 0 ? await getProposal(id) : null;
   if (!proposal) notFound();
-  const sections = await listSections(proposal.id);
+  const [sections, lines] = await Promise.all([listSections(proposal.id), listLineItems(proposal.id)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,7 +28,13 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
           {proposal.clientCompany ? ` · ${proposal.clientCompany}` : ""} · {proposal.businessName}
         </p>
       </div>
-      <SectionEditor proposalId={proposal.id} initial={sections} />
+      <SectionEditor
+        proposalId={proposal.id}
+        initial={sections}
+        initialLines={lines}
+        currency={proposal.currency}
+        initialTerms={{ discountBp: proposal.discountBp, taxRateBp: proposal.taxRateBp }}
+      />
     </div>
   );
 }

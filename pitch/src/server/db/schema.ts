@@ -77,7 +77,24 @@ export const sections = sqliteTable("sections", {
   ...timestamps,
 });
 
+export const RECURRING = ["none", "monthly"] as const;
+export type Recurring = (typeof RECURRING)[number];
+
+export const lineItems = sqliteTable("line_items", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sectionId: integer("section_id").notNull().references(() => sections.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  description: text("description").notNull().default(""),
+  qtyMilli: integer("qty_milli").notNull().default(1000),
+  unitPriceCents: integer("unit_price_cents").notNull().default(0),
+  recurring: text("recurring", { enum: RECURRING }).notNull().default("none"),
+  optional: integer("optional", { mode: "boolean" }).notNull().default(false),
+  selected: integer("selected", { mode: "boolean" }).notNull().default(false),
+  ...timestamps,
+});
+
 export type Business = typeof businesses.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
 export type Section = typeof sections.$inferSelect;
+export type LineItem = typeof lineItems.$inferSelect;

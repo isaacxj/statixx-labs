@@ -3,7 +3,7 @@ import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
 import { cleanSection, moveId } from "@/lib/section-form";
-import { businesses, clients, proposals, sections, type ProposalStatus } from "./schema";
+import { businesses, clients, lineItems, proposals, sections, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -124,6 +124,9 @@ export async function getProposal(id: number) {
       number: proposals.number,
       title: proposals.title,
       status: proposals.status,
+      currency: proposals.currency,
+      discountBp: proposals.discountBp,
+      taxRateBp: proposals.taxRateBp,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -140,7 +143,11 @@ export async function listSections(proposalId: number) {
   return getDb().select().from(sections).where(eq(sections.proposalId, proposalId)).orderBy(asc(sections.position), asc(sections.id));
 }
 
-export async function addSection(proposalId: number, input: { title: string; bodyMd: string } = { title: "Untitled section", bodyMd: "" }) {
+export async function addSection(
+  proposalId: number,
+  input: { title: string; bodyMd: string } = { title: "Untitled section", bodyMd: "" },
+  kind: "text" | "pricing" = "text",
+) {
   const db = getDb();
   const [last] = await db
     .select({ n: sql<number>`coalesce(max(${sections.position}), 0)` })
@@ -148,7 +155,7 @@ export async function addSection(proposalId: number, input: { title: string; bod
     .where(eq(sections.proposalId, proposalId));
   const [row] = await db
     .insert(sections)
-    .values({ proposalId, position: last.n + 1, kind: "text", ...cleanSection(input) })
+    .values({ proposalId, position: last.n + 1, kind, ...cleanSection(input) })
     .returning({ id: sections.id });
   return row.id;
 }
@@ -177,4 +184,54 @@ export async function moveSection(id: number, proposalId: number, dir: -1 | 1) {
   if (!next) return;
   const [first, ...rest] = next.map((sid, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, sid)));
   await db.batch([first, ...rest]);
+}
+
+/** Every line item of a proposal, in section then row order. */
+export async function listLineItems(proposalId: number) {
+  return getDb()
+    .select({ item: lineItems })
+    .from(lineItems)
+    .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+    .where(eq(sections.proposalId, proposalId))
+    .orderBy(asc(sections.position), asc(lineItems.position), asc(lineItems.id))
+    .then((rows) => rows.map((r) => r.item));
+}
+
+const ownedItem = (id: number, proposalId: number) =>
+  and(eq(lineItems.id, id), sql`${lineItems.sectionId} IN (SELECT id FROM sections WHERE proposal_id = ${proposalId})`);
+
+export async function addLineItem(sectionId: number, proposalId: number) {
+  const db = getDb();
+  const [section] = await db
+    .select({ id: sections.id })
+    .from(sections)
+    .where(and(eq(sections.id, sectionId), eq(sections.proposalId, proposalId), eq(sections.kind, "pricing")));
+  if (!section) return;
+  const [last] = await db
+    .select({ n: sql<number>`coalesce(max(${lineItems.position}), 0)` })
+    .from(lineItems)
+    .where(eq(lineItems.sectionId, sectionId));
+  await db.insert(lineItems).values({ sectionId, position: last.n + 1 });
+}
+
+export type LineItemPatch = {
+  description?: string;
+  qtyMilli?: number;
+  unitPriceCents?: number;
+  recurring?: "none" | "monthly";
+  optional?: boolean;
+  selected?: boolean;
+};
+
+export async function updateLineItem(id: number, proposalId: number, patch: LineItemPatch) {
+  if (Object.keys(patch).length === 0) return;
+  await getDb().update(lineItems).set(patch).where(ownedItem(id, proposalId));
+}
+
+export async function deleteLineItem(id: number, proposalId: number) {
+  await getDb().delete(lineItems).where(ownedItem(id, proposalId));
+}
+
+export async function updateProposalPricing(proposalId: number, input: { discountBp: number; taxRateBp: number }) {
+  await getDb().update(proposals).set(input).where(eq(proposals.id, proposalId));
 }
