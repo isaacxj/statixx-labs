@@ -1,3 +1,6 @@
+import { Badge } from "@/components/ui/badge";
+import { Card, Skeleton } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 const colors = [
@@ -44,6 +47,22 @@ export default function DesignPage() {
           <Button size="sm">Small</Button>
           <Button disabled>Disabled</Button>
         </div>
+      </section>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium">Badges, inputs, cards</h2>
+        <div className="flex flex-wrap gap-2">
+          <Badge>Draft</Badge>
+          <Badge variant="info">Sent</Badge>
+          <Badge variant="warning">Viewed</Badge>
+          <Badge variant="success">Accepted</Badge>
+          <Badge variant="danger">Declined</Badge>
+        </div>
+        <Input aria-label="Sample input" placeholder="Input" className="max-w-sm" />
+        <Card className="flex max-w-sm flex-col gap-2">
+          <p className="text-sm font-medium">Loading state</p>
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </Card>
       </section>
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">Radius and overlay</h2>

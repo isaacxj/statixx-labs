@@ -24,13 +24,14 @@ export function SidebarNav() {
           key={href}
           href={href}
           aria-current={isActive(pathname, href) ? "page" : undefined}
+          title={label}
           className={cn(
             "flex h-8 items-center gap-2 rounded-sm px-2 text-sm text-sidebar-foreground transition-colors duration-150 hover:bg-muted",
             isActive(pathname, href) && "bg-accent font-medium text-accent-foreground",
           )}
         >
-          <Icon className="size-4" />
-          {label}
+          <Icon className="size-4 shrink-0" />
+          <span className="[.sidebar-collapsed_&]:sr-only">{label}</span>
         </Link>
       ))}
     </nav>

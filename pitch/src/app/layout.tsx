@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AppShell } from "@/components/shell/app-shell";
+import { collapseScript } from "@/components/shell/collapse-script";
 import { getCurrentUser } from "@/server/user";
 import "./globals.css";
 
@@ -15,7 +16,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: themeScript + collapseScript }} />
       </head>
       <body>
         <AppShell user={user}>{children}</AppShell>
