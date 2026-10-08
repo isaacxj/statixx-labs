@@ -15,11 +15,18 @@
     "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@radix-ui/react-slot": "^1.4.0",
     "@vinext/cloudflare": "latest",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.53.0",
     "next": "16.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0",
     "vinext": "^1.0.1"
   },
   "devDependencies": {

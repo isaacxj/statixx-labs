@@ -6,31 +6,33 @@ export default async function Home() {
   const [businesses, clients] = await Promise.all([listBusinesses(), listClients()]);
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">Pitch</h1>
-      <p className="mt-1 text-sm text-neutral-500">Proposals and quotes. Seeded rows from local D1:</p>
-      <section className="mt-6">
-        <h2 className="font-medium">Businesses</h2>
-        <ul className="mt-2 divide-y divide-neutral-200 border border-neutral-200">
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Overview</h1>
+        <p className="mt-1 text-muted-foreground">Business profiles and clients from local D1.</p>
+      </div>
+      <section aria-labelledby="biz" className="rounded-md border bg-card">
+        <h2 id="biz" className="border-b px-4 py-3 text-lg font-medium">Businesses</h2>
+        <ul className="divide-y">
           {businesses.map((b) => (
-            <li key={b.id} className="flex justify-between px-3 py-2 text-sm">
+            <li key={b.id} className="flex items-center justify-between px-4 py-3">
               <span>{b.name}</span>
-              <span className="font-mono">{b.numberPrefix} · {b.currency}</span>
+              <span className="tabular text-muted-foreground">{b.numberPrefix} · {b.currency}</span>
             </li>
           ))}
         </ul>
       </section>
-      <section className="mt-6">
-        <h2 className="font-medium">Clients</h2>
-        <ul className="mt-2 divide-y divide-neutral-200 border border-neutral-200">
+      <section aria-labelledby="cl" className="rounded-md border bg-card">
+        <h2 id="cl" className="border-b px-4 py-3 text-lg font-medium">Clients</h2>
+        <ul className="divide-y">
           {clients.map((c) => (
-            <li key={c.id} className="flex justify-between px-3 py-2 text-sm">
+            <li key={c.id} className="flex items-center justify-between px-4 py-3">
               <span>{c.name}</span>
-              <span className="text-neutral-500">{c.company}</span>
+              <span className="text-muted-foreground">{c.company}</span>
             </li>
           ))}
         </ul>
       </section>
-    </main>
+    </div>
   );
 }
