@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
@@ -34,5 +34,36 @@ export const clients = sqliteTable("clients", {
   ...timestamps,
 });
 
+export const PROPOSAL_STATUSES = ["draft", "sent", "viewed", "accepted", "declined", "expired"] as const;
+export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+export const proposals = sqliteTable(
+  "proposals",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    businessId: integer("business_id").notNull().references(() => businesses.id),
+    clientId: integer("client_id").notNull().references(() => clients.id),
+    number: text("number").notNull(),
+    title: text("title").notNull(),
+    status: text("status", { enum: PROPOSAL_STATUSES }).notNull().default("draft"),
+    validUntil: text("valid_until"),
+    discountBp: integer("discount_bp").notNull().default(0),
+    taxRateBp: integer("tax_rate_bp").notNull().default(0),
+    currency: text("currency", { enum: ["USD", "CAD"] }).notNull().default("USD"),
+    shareToken: text("share_token"),
+    sentAt: text("sent_at"),
+    firstViewedAt: text("first_viewed_at"),
+    viewCount: integer("view_count").notNull().default(0),
+    acceptedAt: text("accepted_at"),
+    acceptedByName: text("accepted_by_name"),
+    acceptedIp: text("accepted_ip"),
+    declinedAt: text("declined_at"),
+    declineReason: text("decline_reason"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("proposals_number_unique").on(t.number)],
+);
+
 export type Business = typeof businesses.$inferSelect;
 export type Client = typeof clients.$inferSelect;
+export type Proposal = typeof proposals.$inferSelect;

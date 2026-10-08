@@ -1,10 +1,12 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { getPlatformProxy } from "wrangler";
-import { businesses, clients } from "../src/server/db/schema";
+import { businesses, clients, proposals } from "../src/server/db/schema";
 
 const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>();
 const db = drizzle(env.DB);
 
+await db.delete(proposals);
 await db.delete(clients);
 await db.delete(businesses);
 
@@ -21,5 +23,17 @@ await db.batch([
   ]),
 ]);
 
-console.log("Seeded 3 businesses and 3 clients");
+const [stx, apt] = await db.select().from(businesses).orderBy(businesses.id);
+const [maria, devon, priya] = await db.select().from(clients).orderBy(clients.id);
+await db.batch([
+  db.insert(proposals).values([
+    { businessId: stx.id, clientId: maria.id, number: "STX-2026-001", title: "Website redesign", status: "sent", sentAt: "2026-10-01 15:00:00" },
+    { businessId: stx.id, clientId: priya.id, number: "STX-2026-002", title: "Online ordering setup" },
+    { businessId: apt.id, clientId: devon.id, number: "APT-2026-001", title: "Lead tracking app", currency: "CAD", taxRateBp: 500, status: "accepted", sentAt: "2026-09-20 14:00:00" },
+  ]),
+  db.update(businesses).set({ nextNumber: 3 }).where(eq(businesses.id, stx.id)),
+  db.update(businesses).set({ nextNumber: 2 }).where(eq(businesses.id, apt.id)),
+]);
+
+console.log("Seeded 3 businesses, 3 clients and 3 proposals");
 await dispose();
