@@ -23,3 +23,7 @@ pnpm build
 ```
 
 Database commands only ever touch the local D1 database. After editing `src/server/db/schema.ts`, run `pnpm db:generate` and then `pnpm db:migrate`.
+
+## Design system and shell
+
+Tokens (OKLCH, light and dark) live in `src/app/globals.css`; `/design` shows every token and base component. Theme is light, dark, or system and is remembered. The signed-in email comes from the Cloudflare Access header; set `DEV_USER_EMAIL` in a local `.dev.vars` file to see initials in development.
