@@ -26,7 +26,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{proposal.title}</h1>
-          <Badge variant={proposal.status === "draft" ? "neutral" : proposal.status === "viewed" ? "warning" : "info"}>{proposal.status}</Badge>
+          <Badge variant={proposal.status === "draft" ? "neutral" : proposal.status === "viewed" ? "warning" : proposal.status === "accepted" ? "success" : proposal.status === "declined" ? "danger" : "info"}>{proposal.status}</Badge>
         </div>
         <ShareActions proposalId={proposal.id} initialToken={proposal.shareToken} initialStatus={proposal.status} />
         <div className="flex flex-wrap items-center gap-2">
@@ -45,6 +45,12 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
           {proposal.clientCompany ? ` · ${proposal.clientCompany}` : ""} · {proposal.businessName}
         </p>
       </div>
+      {proposal.status === "accepted" ? (
+        <p role="status" className="bg-success/10 text-success rounded-lg border p-3 text-sm">
+          Accepted{proposal.acceptedByName ? ` by ${proposal.acceptedByName}` : ""}. This proposal is locked and can&apos;t be edited.
+        </p>
+      ) : null}
+      <fieldset disabled={proposal.status === "accepted"} className="contents">
       <SectionEditor
         proposalId={proposal.id}
         initial={sections}
@@ -53,6 +59,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
         currency={proposal.currency}
         initialTerms={{ discountBp: proposal.discountBp, taxRateBp: proposal.taxRateBp }}
       />
+      </fieldset>
       <ActivityTimeline events={events} viewCount={proposal.viewCount} />
     </div>
   );

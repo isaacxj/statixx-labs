@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
@@ -7,6 +7,7 @@ import { cleanSection, moveId } from "@/lib/section-form";
 import { cleanLibraryEntry } from "@/lib/library-form";
 import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
 import { statusAfterView } from "@/lib/activity";
+import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
 import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
@@ -207,6 +208,7 @@ export async function getProposal(id: number) {
       sentAt: proposals.sentAt,
       firstViewedAt: proposals.firstViewedAt,
       viewCount: proposals.viewCount,
+      acceptedByName: proposals.acceptedByName,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -385,6 +387,9 @@ export async function getPublicProposal(token: string) {
       taxRateBp: proposals.taxRateBp,
       validUntil: proposals.validUntil,
       sentAt: proposals.sentAt,
+      acceptedAt: proposals.acceptedAt,
+      acceptedByName: proposals.acceptedByName,
+      declinedAt: proposals.declinedAt,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -432,4 +437,59 @@ export async function recordProposalView(proposalId: number) {
 
 export async function listEvents(proposalId: number) {
   return getDb().select().from(events).where(eq(events.proposalId, proposalId)).orderBy(desc(events.at), desc(events.id));
+}
+
+/** True when the proposal exists and is frozen by acceptance. Edit actions check this before writing. */
+export async function isProposalLocked(proposalId: number) {
+  const [row] = await getDb().select({ status: proposals.status }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  return !row || isLocked(row.status);
+}
+
+export type RespondResult = { ok: true } | { ok: false; reason: "missing" | "closed" };
+
+/** Accepts the proposal behind a token once: records the signer, time and IP, keeps the chosen optional items, and locks it. */
+export async function acceptProposal(token: string, input: { name: string; ip: string | null; selectedIds: unknown }): Promise<RespondResult> {
+  const db = getDb();
+  const [p] = await db.select({ id: proposals.id, status: proposals.status }).from(proposals).where(eq(proposals.shareToken, token)).limit(1);
+  if (!p) return { ok: false, reason: "missing" };
+  if (!canRespond(p.status)) return { ok: false, reason: "closed" };
+  const [changed] = await db
+    .update(proposals)
+    .set({ status: "accepted", acceptedAt: sql`(CURRENT_TIMESTAMP)`, acceptedByName: input.name, acceptedIp: input.ip })
+    .where(and(eq(proposals.id, p.id), inArray(proposals.status, ["sent", "viewed"])))
+    .returning({ id: proposals.id });
+  if (!changed) return { ok: false, reason: "closed" };
+  const optional = await db
+    .select({ id: lineItems.id })
+    .from(lineItems)
+    .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+    .where(and(eq(sections.proposalId, p.id), eq(lineItems.optional, true)));
+  const optionalIds = optional.map((o) => o.id);
+  const chosen = pickSelectable(input.selectedIds, optionalIds);
+  const event = db.insert(events).values({ proposalId: p.id, type: "accepted", metaJson: JSON.stringify({ by: input.name, items: chosen.length }) });
+  if (optionalIds.length === 0) {
+    await event;
+  } else {
+    await db.batch([
+      db.update(lineItems).set({ selected: false }).where(inArray(lineItems.id, optionalIds)),
+      ...(chosen.length ? [db.update(lineItems).set({ selected: true }).where(inArray(lineItems.id, chosen))] : []),
+      event,
+    ]);
+  }
+  return { ok: true };
+}
+
+export async function declineProposal(token: string, reason: string): Promise<RespondResult> {
+  const db = getDb();
+  const [p] = await db.select({ id: proposals.id, status: proposals.status }).from(proposals).where(eq(proposals.shareToken, token)).limit(1);
+  if (!p) return { ok: false, reason: "missing" };
+  if (!canRespond(p.status)) return { ok: false, reason: "closed" };
+  const [changed] = await db
+    .update(proposals)
+    .set({ status: "declined", declinedAt: sql`(CURRENT_TIMESTAMP)`, declineReason: reason || null })
+    .where(and(eq(proposals.id, p.id), inArray(proposals.status, ["sent", "viewed"])))
+    .returning({ id: proposals.id });
+  if (!changed) return { ok: false, reason: "closed" };
+  await db.insert(events).values({ proposalId: p.id, type: "declined", metaJson: reason ? JSON.stringify({ reason }) : null });
+  return { ok: true };
 }
