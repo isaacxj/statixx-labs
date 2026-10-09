@@ -9,6 +9,7 @@ import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapsh
 import { statusAfterView } from "@/lib/activity";
 import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
 import { chicagoDate, needsFollowUp } from "@/lib/expiry";
+import type { DashProposal } from "@/lib/dashboard";
 import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
@@ -544,4 +545,56 @@ export async function listFollowUps(now = new Date()) {
     .where(eq(proposals.status, "viewed"))
     .orderBy(asc(proposals.firstViewedAt));
   return rows.filter((r) => needsFollowUp(r.status, r.firstViewedAt, now));
+}
+
+/** Every proposal with its priced line items, for the dashboard numbers. */
+export async function listDashboardProposals(): Promise<DashProposal[]> {
+  const db = getDb();
+  const [rows, items] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        status: proposals.status,
+        currency: proposals.currency,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        sentAt: proposals.sentAt,
+        acceptedAt: proposals.acceptedAt,
+      })
+      .from(proposals),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id)),
+  ]);
+  const byProposal = new Map<number, DashProposal["items"]>();
+  for (const { proposalId, ...item } of items) byProposal.set(proposalId, [...(byProposal.get(proposalId) ?? []), item]);
+  return rows.map(({ id, ...p }) => ({ ...p, items: byProposal.get(id) ?? [] }));
+}
+
+/** Latest timeline entries across all proposals, newest first. */
+export async function listRecentActivity(limit = 8) {
+  return getDb()
+    .select({
+      id: events.id,
+      type: events.type,
+      at: events.at,
+      metaJson: events.metaJson,
+      proposalId: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      clientName: clients.name,
+    })
+    .from(events)
+    .innerJoin(proposals, eq(events.proposalId, proposals.id))
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .orderBy(desc(events.at), desc(events.id))
+    .limit(limit);
 }
