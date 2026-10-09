@@ -101,9 +101,18 @@ export const librarySections = sqliteTable("library_sections", {
   ...timestamps,
 });
 
+export const templates = sqliteTable("templates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  businessId: integer("business_id").notNull().references(() => businesses.id),
+  snapshotJson: text("snapshot_json").notNull(),
+  ...timestamps,
+});
+
 export type Business = typeof businesses.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
 export type Section = typeof sections.$inferSelect;
 export type LineItem = typeof lineItems.$inferSelect;
 export type LibrarySection = typeof librarySections.$inferSelect;
+export type Template = typeof templates.$inferSelect;

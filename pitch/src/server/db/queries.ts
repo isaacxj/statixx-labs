@@ -4,7 +4,8 @@ import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
 import { cleanSection, moveId } from "@/lib/section-form";
 import { cleanLibraryEntry } from "@/lib/library-form";
-import { businesses, clients, librarySections, lineItems, proposals, sections, type ProposalStatus } from "./schema";
+import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
+import { businesses, clients, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -97,6 +98,10 @@ export async function countProposalsByStatus() {
 
 /** Creates a draft and takes the business's next number in one atomic batch. */
 export async function createProposal(input: { title: string; businessId: number; clientId: number }) {
+  return (await createDraft(input)).number;
+}
+
+async function createDraft(input: { title: string; businessId: number; clientId: number }, terms?: { discountBp: number; taxRateBp: number }) {
   const db = getDb();
   const business = await getBusiness(input.businessId);
   if (!business) throw new Error("Business not found");
@@ -112,10 +117,77 @@ export async function createProposal(input: { title: string; businessId: number;
       number,
       title: input.title,
       currency: business.currency,
-      taxRateBp: business.taxRateBp,
+      taxRateBp: terms?.taxRateBp ?? business.taxRateBp,
+      discountBp: terms?.discountBp ?? 0,
     }),
   ]);
-  return number;
+  const [row] = await db.select({ id: proposals.id }).from(proposals).where(eq(proposals.number, number)).limit(1);
+  return { id: row.id, number };
+}
+
+/** Writes snapshot sections and line items into a proposal. Each section is its own insert because line items need its id. */
+async function applySnapshot(proposalId: number, snap: Snapshot) {
+  const db = getDb();
+  let position = 0;
+  for (const s of snap.sections) {
+    const [row] = await db
+      .insert(sections)
+      .values({ proposalId, position: ++position, kind: s.kind, ...cleanSection({ title: s.title, bodyMd: s.bodyMd }) })
+      .returning({ id: sections.id });
+    if (s.items.length > 0) {
+      const [first, ...rest] = s.items.map((i, n) => db.insert(lineItems).values({ sectionId: row.id, position: n + 1, ...i }));
+      await db.batch([first, ...rest]);
+    }
+  }
+}
+
+async function snapshotOf(proposalId: number): Promise<Snapshot | null> {
+  const proposal = await getProposal(proposalId);
+  if (!proposal) return null;
+  const [secs, items] = await Promise.all([listSections(proposalId), listLineItems(proposalId)]);
+  return buildSnapshot(proposal, secs, items);
+}
+
+/** A new draft with the same client, business, terms, sections and line items. Optional items start unticked. */
+export async function duplicateProposal(proposalId: number) {
+  const [source] = await getDb().select().from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  const snap = source ? await snapshotOf(proposalId) : null;
+  if (!source || !snap) return null;
+  const draft = await createDraft({ title: copyTitle(source.title), businessId: source.businessId, clientId: source.clientId }, snap);
+  await applySnapshot(draft.id, snap);
+  return draft;
+}
+
+export async function listTemplates() {
+  const rows = await getDb()
+    .select({ id: templates.id, name: templates.name, businessId: templates.businessId, businessName: businesses.name, snapshotJson: templates.snapshotJson })
+    .from(templates)
+    .innerJoin(businesses, eq(templates.businessId, businesses.id))
+    .orderBy(asc(templates.name), asc(templates.id));
+  return rows.map(({ snapshotJson, ...t }) => ({ ...t, sectionCount: parseSnapshot(snapshotJson).sections.length }));
+}
+
+export async function saveProposalAsTemplate(proposalId: number, name: string) {
+  const [source] = await getDb().select({ businessId: proposals.businessId, title: proposals.title }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  const snap = source ? await snapshotOf(proposalId) : null;
+  if (!source || !snap) return null;
+  const clean = cleanTemplateName(name || source.title);
+  await getDb().insert(templates).values({ name: clean, businessId: source.businessId, snapshotJson: JSON.stringify(snap) });
+  return clean;
+}
+
+export async function deleteTemplate(id: number) {
+  await getDb().delete(templates).where(eq(templates.id, id));
+}
+
+/** A ready draft for the chosen client from a template, using the template's business. */
+export async function createProposalFromTemplate(templateId: number, clientId: number, title?: string) {
+  const [t] = await getDb().select().from(templates).where(eq(templates.id, templateId)).limit(1);
+  if (!t) return null;
+  const snap = parseSnapshot(t.snapshotJson);
+  const draft = await createDraft({ title: title?.trim() || t.name, businessId: t.businessId, clientId }, snap);
+  await applySnapshot(draft.id, snap);
+  return draft;
 }
 
 export async function getProposal(id: number) {

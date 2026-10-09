@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { parseCents, parseQtyMilli, parseRateBp } from "@/lib/pricing";
 import {
   addLineItem,
@@ -7,6 +8,8 @@ import {
   deleteLineItem,
   createLibrarySection,
   deleteSection,
+  duplicateProposal,
+  saveProposalAsTemplate,
   insertLibrarySection,
   listLibrary,
   listLineItems,
@@ -117,4 +120,17 @@ export async function insertFromLibraryAction(proposalId: number, libraryId: num
   const lid = asId(libraryId);
   const addedId = pid && lid ? await insertLibrarySection(pid, lid) : null;
   return { sections: pid ? await listSections(pid) : [], addedId };
+}
+
+export async function duplicateProposalAction(formData: FormData) {
+  const id = asId(Number(formData.get("proposalId")));
+  const draft = id ? await duplicateProposal(id) : null;
+  if (draft) redirect(`/proposals/${draft.id}`);
+}
+
+export async function saveTemplateAction(formData: FormData) {
+  const id = asId(Number(formData.get("proposalId")));
+  if (!id) return;
+  const name = await saveProposalAsTemplate(id, String(formData.get("name") ?? ""));
+  if (name) redirect(`/templates?saved=${encodeURIComponent(name)}`);
 }
