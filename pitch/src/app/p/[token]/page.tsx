@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { isTeamRequest } from "@/lib/activity";
 import { Markdown } from "@/components/markdown";
+import { PrintButton } from "@/components/print-button";
 import { canRespond } from "@/lib/respond";
 import { ClientPricingTable, ClientSummary, ResponseProvider } from "@/components/client-pricing";
 import { accentForeground, isShareToken, safeAccent } from "@/lib/share";
@@ -30,7 +31,7 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
   const style = { "--primary": accent, "--primary-foreground": accentForeground(accent) } as React.CSSProperties;
 
   return (
-    <div style={style} className="bg-background text-foreground min-h-screen">
+    <div style={style} className="bg-background text-foreground min-h-screen print:bg-transparent">
       {p.status === "draft" ? (
         <p role="status" className="bg-warning/10 text-warning border-b px-4 py-2 text-center text-sm">
           Preview. This proposal hasn&apos;t been sent yet.
@@ -38,8 +39,25 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
       ) : null}
       <ResponseProvider token={token} lines={lines} currency={p.currency} discountBp={p.discountBp} taxRateBp={p.taxRateBp} open={canRespond(p.status)}>
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 py-10 md:py-16">
-        <header className="flex flex-col gap-6 border-b pb-8">
-          <div className="flex items-center gap-3">
+        <section aria-hidden className="bg-primary text-primary-foreground hidden min-h-[80vh] flex-col justify-between rounded-lg p-10 break-after-page print:flex">
+          <span className="text-lg font-semibold">{p.businessName}</span>
+          <div className="flex flex-col gap-4">
+            <p className="tabular text-base">{p.number}</p>
+            <p className="text-3xl leading-tight font-semibold">{p.title}</p>
+            <p className="text-lg">
+              Prepared for {p.clientName}
+              {p.clientCompany ? `, ${p.clientCompany}` : ""}
+            </p>
+          </div>
+          <p className="text-sm">
+            {p.sentAt ? formatDate(p.sentAt) : ""}
+            {p.validUntil ? `${p.sentAt ? " · " : ""}Valid until ${formatDay(p.validUntil)}` : ""}
+          </p>
+        </section>
+
+        <header className="flex flex-col gap-6 border-b pb-8 print:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
             {p.hasLogo ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`/p/${token}/logo`} alt="" className="size-10 rounded-sm object-contain" />
@@ -52,6 +70,8 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
               <span className="font-semibold">{p.businessName}</span>
               {p.businessLegalName ? <span className="text-muted-foreground text-xs">{p.businessLegalName}</span> : null}
             </div>
+            </div>
+            <PrintButton />
           </div>
           <div className="flex flex-col gap-2">
             <p className="text-primary tabular font-mono text-[13px]">{p.number}</p>
@@ -66,8 +86,8 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
         </header>
 
         {sections.map((s) => (
-          <section key={s.id} aria-labelledby={`s-${s.id}`} className="flex flex-col gap-3">
-            <h2 id={`s-${s.id}`} className="text-xl font-semibold">{s.title}</h2>
+          <section key={s.id} aria-labelledby={`s-${s.id}`} className="flex flex-col gap-3 print:break-inside-avoid-page">
+            <h2 id={`s-${s.id}`} className="text-xl font-semibold break-after-avoid">{s.title}</h2>
             {s.kind === "text" ? (
               <Markdown source={s.bodyMd} />
             ) : (

@@ -68,9 +68,9 @@ export function ClientPricingTable({ sectionId }: { sectionId: number }) {
   const { lines, selected, toggle, money, open } = useResponse();
   const items = lines.filter((l) => l.sectionId === sectionId);
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-lg border print:overflow-visible">
       <table className="w-full text-sm">
-        <thead className="text-muted-foreground bg-muted/50 text-left text-xs">
+        <thead className="text-muted-foreground bg-muted/50 table-header-group text-left text-xs">
           <tr>
             <th scope="col" className="px-4 py-2 font-medium">Item</th>
             <th scope="col" className="px-4 py-2 text-right font-medium">Qty</th>
@@ -82,7 +82,7 @@ export function ClientPricingTable({ sectionId }: { sectionId: number }) {
           {items.map((i) => {
             const on = !i.optional || selected.has(i.id);
             return (
-              <tr key={i.id} className={on ? "" : "text-muted-foreground"}>
+              <tr key={i.id} className={`break-inside-avoid ${on ? "" : "text-muted-foreground"}`}>
                 <td className="px-4 py-3">
                   {i.optional && open ? (
                     <label className="inline-flex items-center gap-2 max-md:min-h-11">
@@ -161,11 +161,11 @@ export function ClientSummary() {
   const showOneTime = totals.oneTime.subtotal > 0 || !hasMonthly;
 
   return (
-    <section aria-label="Summary" className={`bg-card flex flex-col gap-4 rounded-lg border p-4 ${mode === "idle" ? "sticky bottom-0 md:static" : ""}`}>
+    <section aria-label="Summary" className={`bg-card flex flex-col gap-4 rounded-lg border p-4 print:static print:break-inside-avoid ${mode === "idle" ? "sticky bottom-0 md:static" : ""}`}>
       {showOneTime ? <SummaryBlock label="Total" t={totals.oneTime} money={money} /> : null}
       {hasMonthly ? <SummaryBlock label="Monthly" t={totals.monthly} money={money} suffix="/mo" /> : null}
       {open && mode === "idle" ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 print:hidden">
           <Button onClick={() => { setMode("accept"); setTimeout(() => nameRef.current?.focus(), 0); }}>
             <Check />Accept proposal
           </Button>
