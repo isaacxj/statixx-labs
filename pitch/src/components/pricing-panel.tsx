@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { addLineItemAction, deleteLineItemAction, saveLineItemAction } from "@/app/proposals/[id]/actions";
+import { addLineItemAction, deleteLineItemAction, saveLineItemAction } from "@/app/(app)/proposals/[id]/actions";
 import { centsToInput, counts, lineTotal, milliToInput, parseCents, parseQtyMilli } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import type { LineItem } from "@/server/db/schema";

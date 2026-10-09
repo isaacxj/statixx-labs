@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { ArrowDown, ArrowUp, BookmarkPlus, Library, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/components/ui/toast";
 import { Markdown } from "@/components/markdown";
 import { cn } from "@/lib/utils";
 import { PricingPanel } from "@/components/pricing-panel";
@@ -16,9 +17,10 @@ import {
   deleteSectionAction,
   insertFromLibraryAction,
   moveSectionAction,
+  restoreSectionAction,
   saveSectionAction,
   saveToLibraryAction,
-} from "@/app/proposals/[id]/actions";
+} from "@/app/(app)/proposals/[id]/actions";
 
 type Item = { id: number; kind: "text" | "pricing"; title: string; bodyMd: string };
 type Terms = { discountBp: number; taxRateBp: number };
@@ -45,10 +47,10 @@ export function SectionEditor({ proposalId, initial, initialLines, initialLibrar
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerQuery, setPickerQuery] = useState("");
   const [category, setCategory] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(initial[0]?.id ?? null);
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [save, setSave] = useState<Save>("saved");
+  const toast = useToast();
   const [, startTransition] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latest = useRef(items);
@@ -226,13 +228,32 @@ export function SectionEditor({ proposalId, initial, initialLines, initialLibrar
                 variant="ghost"
                 aria-label="Delete section"
                 onClick={() => {
-                  if (!window.confirm(`Delete "${selected.title || "Untitled section"}"?`)) return;
                   const gone = selected.id;
+                  const snap = {
+                    position: items.findIndex((i) => i.id === gone) + 1,
+                    kind: selected.kind,
+                    title: selected.title,
+                    bodyMd: selected.bodyMd,
+                    lines: lines
+                      .filter((l) => l.sectionId === gone)
+                      .map(({ description, qtyMilli, unitPriceCents, recurring, optional }) => ({ description, qtyMilli, unitPriceCents, recurring, optional })),
+                  };
                   dirtyId.current = null;
                   structural(async () => {
                     const res = await deleteSectionAction(proposalId, gone);
                     apply(res.sections);
+                    setLines((all) => all.filter((l) => l.sectionId !== gone));
                     setSelectedId(res.sections[0]?.id ?? null);
+                    toast(`Deleted "${snap.title || "Untitled section"}"`, {
+                      label: "Undo",
+                      run: () =>
+                        structural(async () => {
+                          const back = await restoreSectionAction(proposalId, snap);
+                          apply(back.sections);
+                          setLines(back.lines);
+                          if (back.restoredId) setSelectedId(back.restoredId);
+                        }),
+                    });
                   });
                 }}
               >
@@ -265,13 +286,12 @@ export function SectionEditor({ proposalId, initial, initialLines, initialLibrar
                   structural(async () => {
                     const res = await saveToLibraryAction(proposalId, sid, category);
                     setLibrary(res.library);
-                    setNotice(res.ok ? "Saved to the library." : "Couldn't save to the library.");
+                    toast(res.ok ? "Saved to the library." : "Couldn't save to the library.");
                   });
                 }}
               >
                 <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category (e.g. Terms)" aria-label="Library category" maxLength={40} className="max-w-48" />
                 <Button type="submit" size="sm" variant="outline"><BookmarkPlus />Save to library</Button>
-                {notice ? <p role="status" className="text-muted-foreground text-xs">{notice}</p> : null}
               </form>
             ) : null}
             {selected.kind === "pricing" ? (
