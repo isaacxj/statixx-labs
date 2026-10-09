@@ -10,7 +10,7 @@ import { statusAfterView } from "@/lib/activity";
 import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
 import { chicagoDate, needsFollowUp } from "@/lib/expiry";
 import type { DashProposal } from "@/lib/dashboard";
-import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
+import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type LineItem, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -260,6 +260,40 @@ export async function deleteSection(id: number, proposalId: number) {
     db.delete(sections).where(and(eq(sections.id, id), eq(sections.proposalId, proposalId))),
     ...rest.map((s, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, s.id))),
   ]);
+}
+
+/** Puts a deleted section (and its line items) back at its old position. */
+export async function restoreSection(
+  proposalId: number,
+  snap: { position: number; kind: "text" | "pricing"; title: string; bodyMd: string; lines: Pick<LineItem, "description" | "qtyMilli" | "unitPriceCents" | "recurring" | "optional">[] },
+) {
+  const db = getDb();
+  const current = await listSections(proposalId);
+  const at = Math.min(Math.max(1, snap.position), current.length + 1);
+  const later = current.slice(at - 1);
+  if (later.length) {
+    const [first, ...rest] = later.map((s, i) => db.update(sections).set({ position: at + 1 + i }).where(eq(sections.id, s.id)));
+    await db.batch([first, ...rest]);
+  }
+  const [row] = await db
+    .insert(sections)
+    .values({ proposalId, position: at, kind: snap.kind, ...cleanSection(snap) })
+    .returning({ id: sections.id });
+  if (snap.kind === "pricing" && snap.lines.length) {
+    const [first, ...rest] = snap.lines.map((l, i) =>
+      db.insert(lineItems).values({
+        sectionId: row.id,
+        position: i + 1,
+        description: l.description,
+        qtyMilli: l.qtyMilli,
+        unitPriceCents: l.unitPriceCents,
+        recurring: l.recurring,
+        optional: l.optional,
+      }),
+    );
+    await db.batch([first, ...rest]);
+  }
+  return row.id;
 }
 
 export async function moveSection(id: number, proposalId: number, dir: -1 | 1) {

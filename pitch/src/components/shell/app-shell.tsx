@@ -5,9 +5,11 @@ import { BottomNav, Breadcrumb, SidebarNav } from "./nav";
 import { CommandPalette, type PaletteData } from "./command-palette";
 import { SidebarToggle } from "./sidebar-toggle";
 import { ThemeToggle } from "./theme-toggle";
+import { ToastProvider } from "@/components/ui/toast";
 
 export function AppShell({ user, palette, children }: { user: CurrentUser; palette: PaletteData; children: React.ReactNode }) {
   return (
+    <ToastProvider>
     <div className="min-h-screen md:grid md:grid-cols-[var(--sidebar-w)_1fr]">
       <aside className="sticky top-0 hidden h-screen flex-col gap-4 border-r bg-sidebar p-3 md:flex">
         <Link href="/" className="flex h-9 items-center gap-2 px-2 font-semibold">
@@ -39,5 +41,6 @@ export function AppShell({ user, palette, children }: { user: CurrentUser; palet
       </div>
       <BottomNav />
     </div>
+    </ToastProvider>
   );
 }
