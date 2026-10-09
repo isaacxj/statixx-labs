@@ -12,5 +12,6 @@
       "migrations_dir": "drizzle"
     }
   ],
+  "r2_buckets": [{ "binding": "LOGOS", "bucket_name": "ledger-logos" }],
   "assets": { "directory": "dist/client", "not_found_handling": "none", "binding": "ASSETS" }
 }
