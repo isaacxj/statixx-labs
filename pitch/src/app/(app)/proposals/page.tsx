@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Download, Plus, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,9 +45,13 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h1 className="text-2xl font-semibold">Proposals</h1>
-        <Link href="/proposals/new" className={buttonVariants()}><Plus />New proposal</Link>
+        <div className="flex w-full flex-wrap items-center gap-2 md:w-auto md:justify-end">
+          <a href="/export/proposals.csv" download className={cn(buttonVariants({ variant: "outline" }), "max-md:min-h-11 max-md:flex-1")}><Download />Proposals CSV</a>
+          <a href="/export/line-items.csv" download className={cn(buttonVariants({ variant: "outline" }), "max-md:min-h-11 max-md:flex-1")}><Download />Line items CSV</a>
+          <Link href="/proposals/new" className={cn(buttonVariants(), "max-md:order-first max-md:min-h-11 max-md:w-full")}><Plus />New proposal</Link>
+        </div>
       </div>
       {sp.created && (
         <p role="status" className="bg-success/10 text-success border-success/30 rounded-md border px-4 py-2 text-sm">

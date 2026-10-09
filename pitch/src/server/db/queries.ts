@@ -10,6 +10,7 @@ import { statusAfterView } from "@/lib/activity";
 import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
 import { chicagoDate, needsFollowUp } from "@/lib/expiry";
 import type { DashProposal } from "@/lib/dashboard";
+import type { ExportLine, ExportProposal } from "@/lib/csv";
 import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type LineItem, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
@@ -646,4 +647,53 @@ export async function listPaletteData() {
     db.select({ id: clients.id, name: clients.name, company: clients.company }).from(clients).orderBy(asc(clients.name)),
   ]);
   return { proposals: props, clients: cls };
+}
+
+/** Every proposal with its priced items, plus each line with its section, for CSV export. */
+export async function listExportData(): Promise<{ proposals: ExportProposal[]; lines: ExportLine[] }> {
+  const db = getDb();
+  const [rows, lines] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        number: proposals.number,
+        title: proposals.title,
+        status: proposals.status,
+        currency: proposals.currency,
+        clientName: clients.name,
+        clientCompany: clients.company,
+        businessName: businesses.name,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        validUntil: proposals.validUntil,
+        sentAt: proposals.sentAt,
+        firstViewedAt: proposals.firstViewedAt,
+        viewCount: proposals.viewCount,
+        acceptedAt: proposals.acceptedAt,
+        acceptedByName: proposals.acceptedByName,
+        declinedAt: proposals.declinedAt,
+        declineReason: proposals.declineReason,
+      })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+      .orderBy(asc(proposals.number)),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        sectionTitle: sections.title,
+        description: lineItems.description,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+      .orderBy(asc(sections.proposalId), asc(sections.position), asc(lineItems.position), asc(lineItems.id)),
+  ]);
+  const byProposal = new Map<number, ExportProposal["items"]>();
+  for (const l of lines) byProposal.set(l.proposalId, [...(byProposal.get(l.proposalId) ?? []), l]);
+  return { proposals: rows.map((r) => ({ ...r, clientCompany: r.clientCompany ?? "", items: byProposal.get(r.id) ?? [] })), lines };
 }
