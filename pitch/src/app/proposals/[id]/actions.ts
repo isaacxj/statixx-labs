@@ -5,7 +5,10 @@ import {
   addLineItem,
   addSection,
   deleteLineItem,
+  createLibrarySection,
   deleteSection,
+  insertLibrarySection,
+  listLibrary,
   listLineItems,
   listSections,
   moveSection,
@@ -96,4 +99,22 @@ export async function savePricingTermsAction(proposalId: number, discount: strin
   const taxRateBp = parseRateBp(String(tax));
   if (pid && discountBp !== null && taxRateBp !== null) await updateProposalPricing(pid, { discountBp, taxRateBp });
   return { ok: pid !== null && discountBp !== null && taxRateBp !== null };
+}
+
+/** Saves the section's current text to the library as an independent copy. */
+export async function saveToLibraryAction(proposalId: number, sectionId: number, category: string) {
+  const pid = asId(proposalId);
+  const sid = asId(sectionId);
+  if (!pid || !sid) return { library: await listLibrary(), ok: false };
+  const section = (await listSections(pid)).find((s) => s.id === sid && s.kind === "text");
+  if (!section) return { library: await listLibrary(), ok: false };
+  await createLibrarySection({ category: String(category), title: section.title, bodyMd: section.bodyMd });
+  return { library: await listLibrary(), ok: true };
+}
+
+export async function insertFromLibraryAction(proposalId: number, libraryId: number) {
+  const pid = asId(proposalId);
+  const lid = asId(libraryId);
+  const addedId = pid && lid ? await insertLibrarySection(pid, lid) : null;
+  return { sections: pid ? await listSections(pid) : [], addedId };
 }

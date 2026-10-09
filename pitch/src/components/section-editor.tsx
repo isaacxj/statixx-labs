@@ -1,15 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Library, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/markdown";
 import { cn } from "@/lib/utils";
 import { PricingPanel } from "@/components/pricing-panel";
 import { PricingTotals } from "@/components/pricing-totals";
-import type { LineItem } from "@/server/db/schema";
-import { addPricingSectionAction, addSectionAction, deleteSectionAction, moveSectionAction, saveSectionAction } from "@/app/proposals/[id]/actions";
+import { groupByCategory } from "@/lib/library-form";
+import type { LibrarySection, LineItem } from "@/server/db/schema";
+import {
+  addPricingSectionAction,
+  addSectionAction,
+  deleteSectionAction,
+  insertFromLibraryAction,
+  moveSectionAction,
+  saveSectionAction,
+  saveToLibraryAction,
+} from "@/app/proposals/[id]/actions";
 
 type Item = { id: number; kind: "text" | "pricing"; title: string; bodyMd: string };
 type Terms = { discountBp: number; taxRateBp: number };
@@ -23,14 +32,20 @@ type Props = {
   proposalId: number;
   initial: Item[];
   initialLines: LineItem[];
+  initialLibrary: LibrarySection[];
   currency: "USD" | "CAD";
   initialTerms: Terms;
 };
 
-export function SectionEditor({ proposalId, initial, initialLines, currency, initialTerms }: Props) {
+export function SectionEditor({ proposalId, initial, initialLines, initialLibrary, currency, initialTerms }: Props) {
   const [items, setItems] = useState<Item[]>(() => initial.map(toItem));
   const [lines, setLines] = useState<LineItem[]>(initialLines);
   const [terms, setTerms] = useState<Terms>(initialTerms);
+  const [library, setLibrary] = useState<LibrarySection[]>(initialLibrary);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(initial[0]?.id ?? null);
   const [mode, setMode] = useState<"write" | "preview">("write");
   const [save, setSave] = useState<Save>("saved");
@@ -80,6 +95,11 @@ export function SectionEditor({ proposalId, initial, initialLines, currency, ini
       await run();
     });
 
+  const q = pickerQuery.trim().toLowerCase();
+  const groups = groupByCategory(
+    q ? library.filter((l) => `${l.title} ${l.category} ${l.bodyMd}`.toLowerCase().includes(q)) : library,
+  );
+
   const select = (id: number) => {
     structural(async () => setSelectedId(id));
   };
@@ -117,7 +137,44 @@ export function SectionEditor({ proposalId, initial, initialLines, currency, ini
           >
             <Plus />Add pricing
           </Button>
+          <Button size="sm" variant="outline" aria-expanded={pickerOpen} onClick={() => setPickerOpen((o) => !o)}>
+            <Library />From library
+          </Button>
         </div>
+        {pickerOpen ? (
+          <div className="bg-muted flex flex-col gap-2 rounded-sm p-2">
+            <Input value={pickerQuery} onChange={(e) => setPickerQuery(e.target.value)} placeholder="Search the library" aria-label="Search the library" />
+            {groups.length === 0 ? (
+              <p className="text-muted-foreground px-1 py-1 text-sm">{library.length === 0 ? "The library is empty. Save a section to it from the editor." : "Nothing matches."}</p>
+            ) : (
+              <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+                {groups.map((g) => (
+                  <div key={g.category} className="flex flex-col gap-0.5">
+                    <h3 className="text-muted-foreground px-1 text-xs font-medium">{g.category}</h3>
+                    {g.entries.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        className="hover:bg-accent truncate rounded-sm px-2 py-1.5 text-left text-sm max-md:min-h-11"
+                        onClick={() =>
+                          structural(async () => {
+                            const res = await insertFromLibraryAction(proposalId, l.id);
+                            apply(res.sections);
+                            if (res.addedId) setSelectedId(res.addedId);
+                            setMode("write");
+                            setPickerOpen(false);
+                          })
+                        }
+                      >
+                        {l.title}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
         {items.length === 0 ? (
           <p className="text-muted-foreground px-1 py-2 text-sm">No sections yet. Add the first one.</p>
         ) : (
@@ -199,6 +256,24 @@ export function SectionEditor({ proposalId, initial, initialLines, currency, ini
               </div> : <span />}
               <p role="status" aria-live="polite" className={cn("text-xs", save === "error" ? "text-destructive" : "text-muted-foreground")}>{saveLabel[save]}</p>
             </div>
+            {selected.kind === "text" ? (
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const sid = selected.id;
+                  structural(async () => {
+                    const res = await saveToLibraryAction(proposalId, sid, category);
+                    setLibrary(res.library);
+                    setNotice(res.ok ? "Saved to the library." : "Couldn't save to the library.");
+                  });
+                }}
+              >
+                <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Category (e.g. Terms)" aria-label="Library category" maxLength={40} className="max-w-48" />
+                <Button type="submit" size="sm" variant="outline"><BookmarkPlus />Save to library</Button>
+                {notice ? <p role="status" className="text-muted-foreground text-xs">{notice}</p> : null}
+              </form>
+            ) : null}
             {selected.kind === "pricing" ? (
               <PricingPanel proposalId={proposalId} sectionId={selected.id} currency={currency} lines={lines} onLines={setLines} onSaving={pricingSaving} />
             ) : mode === "write" ? (

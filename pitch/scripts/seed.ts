@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { getPlatformProxy } from "wrangler";
-import { businesses, clients, proposals, sections } from "../src/server/db/schema";
+import { businesses, clients, librarySections, proposals, sections } from "../src/server/db/schema";
 
 const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>();
 const db = drizzle(env.DB);
 
+await db.delete(librarySections);
 await db.delete(sections);
 await db.delete(proposals);
 await db.delete(clients);
@@ -43,5 +44,11 @@ await db.insert(sections).values([
   { proposalId: first.id, position: 3, title: "Terms", bodyMd: "50% due at kickoff, 50% on launch. Questions? Email [hello@statixx.example](mailto:hello@statixx.example)." },
 ]);
 
-console.log("Seeded 3 businesses, 3 clients, 3 proposals and 3 sections");
+await db.insert(librarySections).values([
+  { category: "About us", title: "Who we are", bodyMd: "We are a small team that builds **fast, accessible websites and tools** for local businesses." },
+  { category: "Terms", title: "Payment terms", bodyMd: "- 50% due at kickoff\n- 50% due on launch\n- Invoices are payable within 14 days" },
+  { category: "Terms", title: "Revisions", bodyMd: "Two rounds of revisions are included. Additional rounds are billed hourly." },
+]);
+
+console.log("Seeded 3 businesses, 3 clients, 3 proposals, 3 sections and 3 library entries");
 await dispose();

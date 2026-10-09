@@ -3,7 +3,8 @@ import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
 import { cleanSection, moveId } from "@/lib/section-form";
-import { businesses, clients, lineItems, proposals, sections, type ProposalStatus } from "./schema";
+import { cleanLibraryEntry } from "@/lib/library-form";
+import { businesses, clients, librarySections, lineItems, proposals, sections, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -234,4 +235,33 @@ export async function deleteLineItem(id: number, proposalId: number) {
 
 export async function updateProposalPricing(proposalId: number, input: { discountBp: number; taxRateBp: number }) {
   await getDb().update(proposals).set(input).where(eq(proposals.id, proposalId));
+}
+
+export async function listLibrary(query?: string) {
+  const q = query?.trim();
+  const p = q ? likePattern(q) : null;
+  const match = p
+    ? or(
+        sql`${librarySections.title} LIKE ${p} ESCAPE '\\'`,
+        sql`${librarySections.category} LIKE ${p} ESCAPE '\\'`,
+        sql`${librarySections.bodyMd} LIKE ${p} ESCAPE '\\'`,
+      )
+    : undefined;
+  return getDb().select().from(librarySections).where(match).orderBy(asc(librarySections.category), asc(librarySections.title), asc(librarySections.id));
+}
+
+export async function createLibrarySection(input: { category: string; title: string; bodyMd: string }) {
+  const [row] = await getDb().insert(librarySections).values(cleanLibraryEntry(input)).returning({ id: librarySections.id });
+  return row.id;
+}
+
+export async function deleteLibrarySection(id: number) {
+  await getDb().delete(librarySections).where(eq(librarySections.id, id));
+}
+
+/** Copies a library entry into the proposal as a new text section; the library row is never linked or changed. */
+export async function insertLibrarySection(proposalId: number, libraryId: number) {
+  const [entry] = await getDb().select().from(librarySections).where(eq(librarySections.id, libraryId)).limit(1);
+  if (!entry) return null;
+  return addSection(proposalId, { title: entry.title, bodyMd: entry.bodyMd });
 }
