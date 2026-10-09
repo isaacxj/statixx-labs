@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
 import { bpToPercent, formatProposalNumber } from "@/lib/business-form";
-import { saveBusiness, type FormState } from "@/app/settings/actions";
+import { saveBusiness, type FormState } from "@/app/(app)/settings/actions";
 import type { Business } from "@/server/db/schema";
 
 export function BusinessForm({ business }: { business?: Business }) {

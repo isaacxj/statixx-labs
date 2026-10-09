@@ -5,7 +5,8 @@ import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { parseStatusFilter } from "@/lib/proposal-form";
 import { cn } from "@/lib/utils";
-import { countProposalsByStatus, listProposals } from "@/server/db/queries";
+import { daysSince } from "@/lib/expiry";
+import { countProposalsByStatus, expireDueProposals, listFollowUps, listProposals } from "@/server/db/queries";
 import { PROPOSAL_STATUSES, type ProposalStatus } from "@/server/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,9 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = parseStatusFilter(sp.status);
-  const [rows, counts] = await Promise.all([listProposals({ status, query: q }), countProposalsByStatus()]);
+  await expireDueProposals();
+  const [rows, counts, followUps] = await Promise.all([listProposals({ status, query: q }), countProposalsByStatus(), listFollowUps()]);
+  const now = new Date();
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const href = (s: ProposalStatus | null) => {
     const p = new URLSearchParams();
@@ -50,6 +53,23 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
         <p role="status" className="bg-success/10 text-success border-success/30 rounded-md border px-4 py-2 text-sm">
           Draft <span className="tabular font-medium">{sp.created}</span> created.
         </p>
+      )}
+      {followUps.length > 0 && (
+        <section aria-labelledby="follow-up-h" className="bg-card flex flex-col gap-2 rounded-md border p-4">
+          <h2 id="follow-up-h" className="text-base font-semibold">Needs follow-up</h2>
+          <ul className="divide-y">
+            {followUps.map((f) => (
+              <li key={f.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2 max-md:min-h-11">
+                <Link href={`/proposals/${f.id}`} className="font-medium hover:underline">
+                  <span className="tabular mr-2 font-mono text-[13px]">{f.number}</span>{f.title}
+                </Link>
+                <span className="text-muted-foreground text-sm">
+                  {f.clientName}{f.clientCompany ? ` · ${f.clientCompany}` : ""} · viewed {f.firstViewedAt ? daysSince(f.firstViewedAt, now) : 0} days ago, no answer
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <nav aria-label="Proposal status" className="-mx-1 flex gap-1 overflow-x-auto px-1">
         {tabs.map((t) => (

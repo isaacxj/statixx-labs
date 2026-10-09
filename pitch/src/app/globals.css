@@ -127,3 +127,16 @@
     animation-duration: 0ms !important;
   }
 }
+
+@page {
+  margin: 16mm;
+}
+
+@media print {
+  html,
+  body {
+    background: transparent;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+}
