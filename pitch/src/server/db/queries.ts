@@ -598,3 +598,18 @@ export async function listRecentActivity(limit = 8) {
     .orderBy(desc(events.at), desc(events.id))
     .limit(limit);
 }
+
+/** Light rows for the command palette: the 50 newest proposals and every client. */
+export async function listPaletteData() {
+  const db = getDb();
+  const [props, cls] = await Promise.all([
+    db
+      .select({ id: proposals.id, number: proposals.number, title: proposals.title, status: proposals.status, clientName: clients.name })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .orderBy(desc(proposals.id))
+      .limit(50),
+    db.select({ id: clients.id, name: clients.name, company: clients.company }).from(clients).orderBy(asc(clients.name)),
+  ]);
+  return { proposals: props, clients: cls };
+}
