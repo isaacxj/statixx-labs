@@ -61,7 +61,7 @@ export const proposals = sqliteTable(
     declineReason: text("decline_reason"),
     ...timestamps,
   },
-  (t) => [uniqueIndex("proposals_number_unique").on(t.number)],
+  (t) => [uniqueIndex("proposals_number_unique").on(t.number), uniqueIndex("proposals_share_token_unique").on(t.shareToken)],
 );
 
 export const SECTION_KINDS = ["text", "pricing"] as const;

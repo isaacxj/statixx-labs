@@ -9,6 +9,8 @@ import {
   createLibrarySection,
   deleteSection,
   duplicateProposal,
+  ensureShareToken,
+  markProposalSent,
   saveProposalAsTemplate,
   insertLibrarySection,
   listLibrary,
@@ -133,4 +135,15 @@ export async function saveTemplateAction(formData: FormData) {
   if (!id) return;
   const name = await saveProposalAsTemplate(id, String(formData.get("name") ?? ""));
   if (name) redirect(`/templates?saved=${encodeURIComponent(name)}`);
+}
+
+export async function shareLinkAction(proposalId: number) {
+  const pid = asId(proposalId);
+  return { token: pid ? await ensureShareToken(pid) : null };
+}
+
+export async function markSentAction(proposalId: number) {
+  const pid = asId(proposalId);
+  const token = pid ? await markProposalSent(pid) : null;
+  return { token, status: token ? ("sent" as const) : null };
 }

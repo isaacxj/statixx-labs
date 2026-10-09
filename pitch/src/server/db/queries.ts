@@ -2,6 +2,7 @@ import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
+import { newShareToken } from "@/lib/share";
 import { cleanSection, moveId } from "@/lib/section-form";
 import { cleanLibraryEntry } from "@/lib/library-form";
 import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
@@ -200,6 +201,8 @@ export async function getProposal(id: number) {
       currency: proposals.currency,
       discountBp: proposals.discountBp,
       taxRateBp: proposals.taxRateBp,
+      shareToken: proposals.shareToken,
+      sentAt: proposals.sentAt,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -336,4 +339,69 @@ export async function insertLibrarySection(proposalId: number, libraryId: number
   const [entry] = await getDb().select().from(librarySections).where(eq(librarySections.id, libraryId)).limit(1);
   if (!entry) return null;
   return addSection(proposalId, { title: entry.title, bodyMd: entry.bodyMd });
+}
+
+/** The proposal's private link token, created on first use and stable afterwards. */
+export async function ensureShareToken(proposalId: number) {
+  const db = getDb();
+  const [row] = await db.select({ token: proposals.shareToken }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  if (!row) return null;
+  if (row.token) return row.token;
+  const token = newShareToken();
+  await db.update(proposals).set({ shareToken: token }).where(and(eq(proposals.id, proposalId), sql`${proposals.shareToken} IS NULL`));
+  const [after] = await db.select({ token: proposals.shareToken }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  return after?.token ?? null;
+}
+
+/** Marks a draft as sent (and makes sure it has a link). Later statuses are left alone. */
+export async function markProposalSent(proposalId: number) {
+  const token = await ensureShareToken(proposalId);
+  if (!token) return null;
+  await getDb()
+    .update(proposals)
+    .set({ status: "sent", sentAt: sql`(CURRENT_TIMESTAMP)` })
+    .where(and(eq(proposals.id, proposalId), eq(proposals.status, "draft")));
+  return token;
+}
+
+/** Everything the public page shows for one token, and nothing else: no ids of other records, no internal fields. */
+export async function getPublicProposal(token: string) {
+  const db = getDb();
+  const [p] = await db
+    .select({
+      id: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      status: proposals.status,
+      currency: proposals.currency,
+      discountBp: proposals.discountBp,
+      taxRateBp: proposals.taxRateBp,
+      validUntil: proposals.validUntil,
+      sentAt: proposals.sentAt,
+      clientName: clients.name,
+      clientCompany: clients.company,
+      businessName: businesses.name,
+      businessLegalName: businesses.legalName,
+      businessAddress: businesses.address,
+      businessAccent: businesses.accent,
+      hasLogo: sql<number>`${businesses.logoKey} IS NOT NULL`,
+    })
+    .from(proposals)
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+    .where(eq(proposals.shareToken, token))
+    .limit(1);
+  if (!p) return null;
+  const [secs, lines] = await Promise.all([listSections(p.id), listLineItems(p.id)]);
+  return { proposal: p, sections: secs, lines };
+}
+
+export async function getLogoKeyByToken(token: string) {
+  const [row] = await getDb()
+    .select({ key: businesses.logoKey })
+    .from(proposals)
+    .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+    .where(eq(proposals.shareToken, token))
+    .limit(1);
+  return row?.key ?? null;
 }

@@ -4,6 +4,7 @@ import { ChevronLeft, Copy, LayoutTemplate } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ShareActions } from "@/components/share-actions";
 import { SectionEditor } from "@/components/section-editor";
 import { duplicateProposalAction, saveTemplateAction } from "./actions";
 import { getProposal, listLibrary, listLineItems, listSections } from "@/server/db/queries";
@@ -24,8 +25,9 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{proposal.title}</h1>
-          <Badge variant="neutral">{proposal.status}</Badge>
+          <Badge variant={proposal.status === "draft" ? "neutral" : "info"}>{proposal.status}</Badge>
         </div>
+        <ShareActions proposalId={proposal.id} initialToken={proposal.shareToken} initialStatus={proposal.status} />
         <div className="flex flex-wrap items-center gap-2">
           <form action={duplicateProposalAction}>
             <input type="hidden" name="proposalId" value={proposal.id} />
