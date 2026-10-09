@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { isTeamRequest } from "@/lib/activity";
 import { Markdown } from "@/components/markdown";
 import { formatMoney } from "@/lib/money";
 import { counts, lineTotal, proposalTotals } from "@/lib/pricing";
 import { accentForeground, isShareToken, safeAccent } from "@/lib/share";
-import { getPublicProposal } from "@/server/db/queries";
+import { getPublicProposal, recordProposalView } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -16,6 +18,7 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
   const token = (await params).token;
   const data = isShareToken(token) ? await getPublicProposal(token) : null;
   if (!data) notFound();
+  if (data.proposal.status !== "draft" && !isTeamRequest(await headers())) await recordProposalView(data.proposal.id);
   const { proposal: p, sections, lines } = data;
 
   const accent = safeAccent(p.businessAccent);

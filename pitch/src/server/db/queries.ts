@@ -6,7 +6,8 @@ import { newShareToken } from "@/lib/share";
 import { cleanSection, moveId } from "@/lib/section-form";
 import { cleanLibraryEntry } from "@/lib/library-form";
 import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
-import { businesses, clients, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
+import { statusAfterView } from "@/lib/activity";
+import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -123,6 +124,7 @@ async function createDraft(input: { title: string; businessId: number; clientId:
     }),
   ]);
   const [row] = await db.select({ id: proposals.id }).from(proposals).where(eq(proposals.number, number)).limit(1);
+  await db.insert(events).values({ proposalId: row.id, type: "created" });
   return { id: row.id, number };
 }
 
@@ -203,6 +205,8 @@ export async function getProposal(id: number) {
       taxRateBp: proposals.taxRateBp,
       shareToken: proposals.shareToken,
       sentAt: proposals.sentAt,
+      firstViewedAt: proposals.firstViewedAt,
+      viewCount: proposals.viewCount,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -357,10 +361,13 @@ export async function ensureShareToken(proposalId: number) {
 export async function markProposalSent(proposalId: number) {
   const token = await ensureShareToken(proposalId);
   if (!token) return null;
-  await getDb()
+  const db = getDb();
+  const [changed] = await db
     .update(proposals)
     .set({ status: "sent", sentAt: sql`(CURRENT_TIMESTAMP)` })
-    .where(and(eq(proposals.id, proposalId), eq(proposals.status, "draft")));
+    .where(and(eq(proposals.id, proposalId), eq(proposals.status, "draft")))
+    .returning({ id: proposals.id });
+  if (changed) await db.insert(events).values({ proposalId, type: "sent" });
   return token;
 }
 
@@ -404,4 +411,25 @@ export async function getLogoKeyByToken(token: string) {
     .where(eq(proposals.shareToken, token))
     .limit(1);
   return row?.key ?? null;
+}
+
+/** Counts one client view: first view time, view count, sent becomes viewed, and a timeline entry. */
+export async function recordProposalView(proposalId: number) {
+  const db = getDb();
+  const [row] = await db
+    .update(proposals)
+    .set({
+      viewCount: sql`${proposals.viewCount} + 1`,
+      firstViewedAt: sql`COALESCE(${proposals.firstViewedAt}, CURRENT_TIMESTAMP)`,
+    })
+    .where(eq(proposals.id, proposalId))
+    .returning({ viewCount: proposals.viewCount, status: proposals.status });
+  if (!row) return;
+  const next = statusAfterView(row.status);
+  if (next !== row.status) await db.update(proposals).set({ status: next }).where(and(eq(proposals.id, proposalId), eq(proposals.status, row.status)));
+  await db.insert(events).values({ proposalId, type: "viewed", metaJson: JSON.stringify({ n: row.viewCount }) });
+}
+
+export async function listEvents(proposalId: number) {
+  return getDb().select().from(events).where(eq(events.proposalId, proposalId)).orderBy(desc(events.at), desc(events.id));
 }

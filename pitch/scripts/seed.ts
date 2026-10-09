@@ -1,12 +1,13 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { getPlatformProxy } from "wrangler";
-import { businesses, clients, librarySections, proposals, sections } from "../src/server/db/schema";
+import { businesses, clients, events, librarySections, proposals, sections } from "../src/server/db/schema";
 
 const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>();
 const db = drizzle(env.DB);
 
 await db.delete(librarySections);
+await db.delete(events);
 await db.delete(sections);
 await db.delete(proposals);
 await db.delete(clients);

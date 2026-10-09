@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShareActions } from "@/components/share-actions";
+import { ActivityTimeline } from "@/components/activity-timeline";
 import { SectionEditor } from "@/components/section-editor";
 import { duplicateProposalAction, saveTemplateAction } from "./actions";
-import { getProposal, listLibrary, listLineItems, listSections } from "@/server/db/queries";
+import { getProposal, listEvents, listLibrary, listLineItems, listSections } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
   const id = Number((await params).id);
   const proposal = Number.isInteger(id) && id > 0 ? await getProposal(id) : null;
   if (!proposal) notFound();
-  const [sections, lines, library] = await Promise.all([listSections(proposal.id), listLineItems(proposal.id), listLibrary()]);
+  const [sections, lines, library, events] = await Promise.all([listSections(proposal.id), listLineItems(proposal.id), listLibrary(), listEvents(proposal.id)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -25,7 +26,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
         </Link>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{proposal.title}</h1>
-          <Badge variant={proposal.status === "draft" ? "neutral" : "info"}>{proposal.status}</Badge>
+          <Badge variant={proposal.status === "draft" ? "neutral" : proposal.status === "viewed" ? "warning" : "info"}>{proposal.status}</Badge>
         </div>
         <ShareActions proposalId={proposal.id} initialToken={proposal.shareToken} initialStatus={proposal.status} />
         <div className="flex flex-wrap items-center gap-2">
@@ -52,6 +53,7 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
         currency={proposal.currency}
         initialTerms={{ discountBp: proposal.discountBp, taxRateBp: proposal.taxRateBp }}
       />
+      <ActivityTimeline events={events} viewCount={proposal.viewCount} />
     </div>
   );
 }
