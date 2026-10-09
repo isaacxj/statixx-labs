@@ -100,7 +100,23 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
           </Link>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border bg-card">
+        <>
+        <ul className="flex flex-col gap-2 md:hidden">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <Link href={`/proposals/${r.id}`} className="bg-card hover:bg-accent flex min-h-11 flex-col gap-1 rounded-md border p-4 transition-colors">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="tabular font-mono text-[13px]">{r.number}</span>
+                  <Badge variant={statusBadge[r.status]}>{r.status}</Badge>
+                </span>
+                <span className="font-medium">{r.title}</span>
+                <span className="text-muted-foreground text-sm">{r.clientName}{r.clientCompany ? ` · ${r.clientCompany}` : ""}</span>
+                <span className="text-muted-foreground tabular text-xs">{r.businessName} · Sent {formatDate(r.sentAt)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="bg-card hidden overflow-x-auto rounded-md border md:block">
           <table className="w-full min-w-[44rem] text-left">
             <thead className="border-b text-xs text-muted-foreground">
               <tr>
@@ -126,6 +142,7 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

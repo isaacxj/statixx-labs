@@ -68,7 +68,33 @@ export function ClientPricingTable({ sectionId }: { sectionId: number }) {
   const { lines, selected, toggle, money, open } = useResponse();
   const items = lines.filter((l) => l.sectionId === sectionId);
   return (
-    <div className="overflow-x-auto rounded-lg border print:overflow-visible">
+    <>
+    <ul className="divide-y rounded-lg border md:hidden print:hidden">
+      {items.map((i) => {
+        const on = !i.optional || selected.has(i.id);
+        return (
+          <li key={i.id} className={`flex flex-col gap-1 px-4 py-3 ${on ? "" : "text-muted-foreground"}`}>
+            {i.optional && open ? (
+              <label className="flex min-h-11 items-center gap-3">
+                <input type="checkbox" checked={selected.has(i.id)} onChange={() => toggle(i.id)} className="accent-primary size-5" />
+                <span>{i.description || "Untitled item"}</span>
+              </label>
+            ) : (
+              <span>{i.description || "Untitled item"}</span>
+            )}
+            <span className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground tabular font-mono text-xs">
+                {i.qtyMilli / 1000} × {money(i.unitPriceCents)}
+                {i.recurring === "monthly" ? " /mo" : ""}
+                {i.optional ? " · optional" : ""}
+              </span>
+              <span className="tabular font-mono">{money(lineTotal(i))}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+    <div className="hidden overflow-x-auto rounded-lg border md:block print:block print:overflow-visible">
       <table className="w-full text-sm">
         <thead className="text-muted-foreground bg-muted/50 table-header-group text-left text-xs">
           <tr>
@@ -104,6 +130,7 @@ export function ClientPricingTable({ sectionId }: { sectionId: number }) {
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 
@@ -165,11 +192,11 @@ export function ClientSummary() {
       {showOneTime ? <SummaryBlock label="Total" t={totals.oneTime} money={money} /> : null}
       {hasMonthly ? <SummaryBlock label="Monthly" t={totals.monthly} money={money} suffix="/mo" /> : null}
       {open && mode === "idle" ? (
-        <div className="flex flex-wrap gap-2 print:hidden">
-          <Button onClick={() => { setMode("accept"); setTimeout(() => nameRef.current?.focus(), 0); }}>
+        <div className="flex gap-2 print:hidden">
+          <Button className="max-md:h-11 max-md:flex-1" onClick={() => { setMode("accept"); setTimeout(() => nameRef.current?.focus(), 0); }}>
             <Check />Accept proposal
           </Button>
-          <Button variant="outline" onClick={() => setMode("decline")}>Decline</Button>
+          <Button className="max-md:h-11 max-md:flex-1" variant="outline" onClick={() => setMode("decline")}>Decline</Button>
         </div>
       ) : null}
       {open && mode === "accept" ? (
