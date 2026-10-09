@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cleanValidUntil } from "@/lib/expiry";
 import { parseCents, parseQtyMilli, parseRateBp } from "@/lib/pricing";
 import {
   addLineItem,
@@ -20,6 +21,7 @@ import {
   updateLineItem,
   updateSection,
   updateProposalPricing,
+  setValidUntil,
   isProposalLocked,
   type LineItemPatch,
 } from "@/server/db/queries";
@@ -153,4 +155,13 @@ export async function markSentAction(proposalId: number) {
   const pid = asId(proposalId);
   const token = pid ? await markProposalSent(pid) : null;
   return { token, status: token ? ("sent" as const) : null };
+}
+
+/** Saves the valid-until date; accepted proposals are frozen. */
+export async function saveValidUntilAction(proposalId: number, value: string) {
+  const pid = await editableId(proposalId);
+  const date = cleanValidUntil(value);
+  if (!pid || date === undefined) return { ok: false };
+  await setValidUntil(pid, date);
+  return { ok: true };
 }

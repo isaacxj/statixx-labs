@@ -8,6 +8,7 @@ import { cleanLibraryEntry } from "@/lib/library-form";
 import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
 import { statusAfterView } from "@/lib/activity";
 import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
+import { chicagoDate, needsFollowUp } from "@/lib/expiry";
 import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
@@ -207,6 +208,7 @@ export async function getProposal(id: number) {
       shareToken: proposals.shareToken,
       sentAt: proposals.sentAt,
       firstViewedAt: proposals.firstViewedAt,
+      validUntil: proposals.validUntil,
       viewCount: proposals.viewCount,
       acceptedByName: proposals.acceptedByName,
       clientName: clients.name,
@@ -492,4 +494,54 @@ export async function declineProposal(token: string, reason: string): Promise<Re
   if (!changed) return { ok: false, reason: "closed" };
   await db.insert(events).values({ proposalId: p.id, type: "declined", metaJson: reason ? JSON.stringify({ reason }) : null });
   return { ok: true };
+}
+
+/** Moves sent or viewed proposals past their valid-until date to expired, with a timeline entry. Safe to call on every page load. */
+export async function expireDueProposals(now = new Date()) {
+  const db = getDb();
+  const due = await db
+    .select({ id: proposals.id })
+    .from(proposals)
+    .where(and(inArray(proposals.status, ["sent", "viewed"]), sql`${proposals.validUntil} IS NOT NULL`, sql`${proposals.validUntil} < ${chicagoDate(now)}`));
+  for (const { id } of due) {
+    const [changed] = await db
+      .update(proposals)
+      .set({ status: "expired" })
+      .where(and(eq(proposals.id, id), inArray(proposals.status, ["sent", "viewed"])))
+      .returning({ id: proposals.id });
+    if (changed) await db.insert(events).values({ proposalId: id, type: "expired" });
+  }
+}
+
+/** Sets or clears the valid-until date. Extending an expired proposal reopens it as sent or viewed. */
+export async function setValidUntil(proposalId: number, validUntil: string | null, now = new Date()) {
+  const db = getDb();
+  await db.update(proposals).set({ validUntil }).where(eq(proposals.id, proposalId));
+  if (validUntil && validUntil >= chicagoDate(now)) {
+    await db
+      .update(proposals)
+      .set({ status: sql`CASE WHEN ${proposals.firstViewedAt} IS NULL THEN 'sent' ELSE 'viewed' END` })
+      .where(and(eq(proposals.id, proposalId), eq(proposals.status, "expired")));
+  }
+  await expireDueProposals(now);
+}
+
+/** Viewed proposals the client has left unanswered for 3+ days, longest quiet first. */
+export async function listFollowUps(now = new Date()) {
+  const rows = await getDb()
+    .select({
+      id: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      status: proposals.status,
+      firstViewedAt: proposals.firstViewedAt,
+      viewCount: proposals.viewCount,
+      clientName: clients.name,
+      clientCompany: clients.company,
+    })
+    .from(proposals)
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .where(eq(proposals.status, "viewed"))
+    .orderBy(asc(proposals.firstViewedAt));
+  return rows.filter((r) => needsFollowUp(r.status, r.firstViewedAt, now));
 }

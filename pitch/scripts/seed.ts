@@ -30,12 +30,13 @@ const [stx, apt] = await db.select().from(businesses).orderBy(businesses.id);
 const [maria, devon, priya] = await db.select().from(clients).orderBy(clients.id);
 await db.batch([
   db.insert(proposals).values([
-    { businessId: stx.id, clientId: maria.id, number: "STX-2026-001", title: "Website redesign", status: "sent", sentAt: "2026-10-01 15:00:00" },
+    { businessId: stx.id, clientId: maria.id, number: "STX-2026-001", title: "Website redesign", status: "viewed", sentAt: "2026-10-01 15:00:00", firstViewedAt: "2026-10-02 16:00:00", viewCount: 2, shareToken: "seedViewedQuietProposalToken0001" },
+    { businessId: apt.id, clientId: priya.id, number: "APT-2026-002", title: "Booking widget", status: "sent", sentAt: "2026-09-15 14:00:00", validUntil: "2026-09-30", shareToken: "seedExpiredProposalToken00000002" },
     { businessId: stx.id, clientId: priya.id, number: "STX-2026-002", title: "Online ordering setup" },
     { businessId: apt.id, clientId: devon.id, number: "APT-2026-001", title: "Lead tracking app", currency: "CAD", taxRateBp: 500, status: "accepted", sentAt: "2026-09-20 14:00:00" },
   ]),
   db.update(businesses).set({ nextNumber: 3 }).where(eq(businesses.id, stx.id)),
-  db.update(businesses).set({ nextNumber: 2 }).where(eq(businesses.id, apt.id)),
+  db.update(businesses).set({ nextNumber: 3 }).where(eq(businesses.id, apt.id)),
 ]);
 
 const [first] = await db.select().from(proposals).orderBy(proposals.id);

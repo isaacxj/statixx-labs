@@ -6,16 +6,20 @@ import { Markdown } from "@/components/markdown";
 import { canRespond } from "@/lib/respond";
 import { ClientPricingTable, ClientSummary, ResponseProvider } from "@/components/client-pricing";
 import { accentForeground, isShareToken, safeAccent } from "@/lib/share";
-import { getPublicProposal, recordProposalView } from "@/server/db/queries";
+import { expireDueProposals, getPublicProposal, recordProposalView } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 const dateFmt = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "long", day: "numeric", year: "numeric" });
+const dayFmt = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" });
+/** Valid-until is a calendar date, not an instant, so it is formatted without a timezone shift. */
+const formatDay = (ymd: string) => dayFmt.format(new Date(`${ymd}T00:00:00Z`));
 const formatDate = (utc: string) => dateFmt.format(new Date(utc.includes("T") ? utc : `${utc.replace(" ", "T")}Z`));
 
 export default async function ClientProposalPage({ params }: { params: Promise<{ token: string }> }) {
   const token = (await params).token;
+  if (isShareToken(token)) await expireDueProposals();
   const data = isShareToken(token) ? await getPublicProposal(token) : null;
   if (!data) notFound();
   if (data.proposal.status !== "draft" && !isTeamRequest(await headers())) await recordProposalView(data.proposal.id);
@@ -56,7 +60,7 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
               Prepared for {p.clientName}
               {p.clientCompany ? `, ${p.clientCompany}` : ""}
               {p.sentAt ? ` · ${formatDate(p.sentAt)}` : ""}
-              {p.validUntil ? ` · Valid until ${formatDate(p.validUntil)}` : ""}
+              {p.validUntil ? ` · Valid until ${formatDay(p.validUntil)}` : ""}
             </p>
           </div>
         </header>
@@ -75,6 +79,11 @@ export default async function ClientProposalPage({ params }: { params: Promise<{
         {p.status === "accepted" ? (
           <p role="status" className="bg-success/10 text-success rounded-lg border p-4 text-sm">
             Accepted by {p.acceptedByName}{p.acceptedAt ? ` on ${formatDate(p.acceptedAt)}` : ""}. Thank you.
+          </p>
+        ) : null}
+        {p.status === "expired" ? (
+          <p role="status" className="bg-muted text-muted-foreground rounded-lg border p-4 text-sm">
+            This proposal expired{p.validUntil ? ` on ${formatDay(p.validUntil)}` : ""} and can no longer be accepted. Contact {p.businessName} to request an updated one.
           </p>
         ) : null}
         {p.status === "declined" ? (
