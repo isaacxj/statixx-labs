@@ -11,6 +11,7 @@ import { digestSince, loadDigestData } from "@/lib/digest-data";
 import { monthStart, monthlyRetainerRevenue, summarizeOpen, type CurrencyAmounts, type OpenInvoice, type RetainerRow } from "@/lib/dashboard";
 import type { RetainerItem } from "@/lib/retainer-form";
 import type { CurrencyCode } from "@/lib/money";
+import type { ReportInvoice } from "@/lib/reports";
 import { getD1, getDb } from "./index";
 import { businesses, clients, events, invoiceItems, invoices, payments, retainers, settings } from "./schema";
 
@@ -428,4 +429,30 @@ export async function getDashboardData(now = new Date()) {
     upcomingRuns: upcoming.results.map(({ itemsJson, ...r }) => ({ ...r, totalCents: computeTotals(JSON.parse(itemsJson) as RetainerItem[]).totalCents })),
     recentPayments: recent.results,
   };
+}
+
+/** Issued (not draft, not void) invoices with the names reports group by. */
+export async function getReportInvoices() {
+  const { results } = await getD1()
+    .prepare(
+      `SELECT i.id AS id, i.number AS number, i.status AS status, i.issue_date AS issueDate, i.due_date AS dueDate, i.currency AS currency,
+         i.subtotal_cents AS subtotalCents, i.tax_cents AS taxCents, i.total_cents AS totalCents, i.paid_cents AS paidCents,
+         c.name AS clientName, b.name AS businessName
+       FROM invoices i JOIN clients c ON c.id = i.client_id JOIN businesses b ON b.id = i.business_id
+       WHERE i.status NOT IN ('draft', 'void') ORDER BY i.issue_date, i.number`,
+    )
+    .all<ReportInvoice & { id: number; number: string; status: string; dueDate: string; paidCents: number }>();
+  return results;
+}
+
+export async function getReportPayments() {
+  const { results } = await getD1()
+    .prepare(
+      `SELECT p.paid_on AS paidOn, i.number AS number, c.name AS clientName, b.name AS businessName, i.currency AS currency,
+         p.amount_cents AS amountCents, p.method AS method, p.reference AS reference
+       FROM payments p JOIN invoices i ON i.id = p.invoice_id JOIN clients c ON c.id = i.client_id JOIN businesses b ON b.id = i.business_id
+       ORDER BY p.paid_on, p.id`,
+    )
+    .all<{ paidOn: string; number: string; clientName: string; businessName: string; currency: CurrencyCode; amountCents: number; method: string; reference: string }>();
+  return results;
 }
