@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getInvoice } from "@/server/db/queries";
+import { canSend, canVoid, statusLabel, statusTone } from "@/lib/invoice-status";
+import { InvoiceActions } from "../invoice-actions";
 import { InvoiceEditor } from "../invoice-editor";
 import { InvoicePreview } from "../invoice-preview";
 import { centsToText, loadEditorOptions, qtyToText, rateText } from "../editor-data";
@@ -24,9 +26,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       <Link href="/invoices" className="text-muted-foreground hover:text-foreground text-13 inline-flex w-fit items-center gap-1">
         <ChevronLeft className="size-4" />Invoices
       </Link>
-      <header className="flex items-center gap-3">
-        <h1 className="font-mono text-2xl font-semibold tracking-tight">{invoice.number}</h1>
-        <Badge tone={invoice.status === "draft" ? "neutral" : "info"} className="capitalize">{invoice.status.replace("_", " ")}</Badge>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h1 className="font-mono text-2xl font-semibold tracking-tight">{invoice.number}</h1>
+          <Badge tone={statusTone(invoice.status)} className="capitalize">{statusLabel(invoice.status)}</Badge>
+        </div>
+        <InvoiceActions id={invoice.id} canSend={canSend(invoice.status)} canVoid={canVoid(invoice.status, invoice.paidCents)} />
       </header>
       {editable ? (
         <InvoiceEditor

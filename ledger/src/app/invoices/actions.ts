@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { parseInvoiceForm, type InvoiceErrors } from "@/lib/invoice-form";
-import { createInvoice, updateDraftInvoice } from "@/server/db/queries";
+import { createInvoice, duplicateInvoice, sendInvoice, updateDraftInvoice, voidInvoice } from "@/server/db/queries";
 
 export type InvoiceFormState = { errors: InvoiceErrors; saved?: number } | null;
 
@@ -16,4 +17,24 @@ export async function saveInvoice(id: number | null, _prev: InvoiceFormState, da
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${savedId}`);
   return { errors: {}, saved: savedId };
+}
+
+function refresh(id: number) {
+  revalidatePath("/invoices");
+  revalidatePath(`/invoices/${id}`);
+}
+
+export async function markSent(id: number) {
+  if (await sendInvoice(id)) refresh(id);
+}
+
+export async function markVoid(id: number) {
+  if (await voidInvoice(id)) refresh(id);
+}
+
+export async function duplicate(id: number) {
+  const copy = await duplicateInvoice(id);
+  if (copy === null) return;
+  revalidatePath("/invoices");
+  redirect(`/invoices/${copy}`);
 }

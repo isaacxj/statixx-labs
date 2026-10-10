@@ -1,7 +1,9 @@
-import { asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { computeTotals } from "@/lib/invoice-math";
 import type { InvoiceInput } from "@/lib/invoice-form";
 import { likePattern } from "@/lib/client-form";
+import { addDays, todayChicago } from "@/lib/dates";
+import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-status";
 import { getDb } from "./index";
 import { businesses, clients, invoiceItems, invoices } from "./schema";
 
@@ -76,7 +78,14 @@ function itemRows(invoiceId: number, items: InvoiceInput["items"]) {
   return items.map((i, position) => ({ invoiceId, position, ...i }));
 }
 
-export async function listInvoices() {
+export async function listInvoices({ tab = "all", q = "" }: { tab?: StatusTab; q?: string } = {}) {
+  const statuses = tabStatuses(tab);
+  const match = (col: typeof invoices.number | typeof clients.name | typeof businesses.name) =>
+    sql`${col} LIKE ${likePattern(q)} ESCAPE '\\'`;
+  const filters = [
+    statuses ? inArray(invoices.status, [...statuses]) : undefined,
+    q.trim() ? or(match(invoices.number), match(clients.name), match(businesses.name)) : undefined,
+  ];
   return getDb()
     .select({
       id: invoices.id,
@@ -93,7 +102,61 @@ export async function listInvoices() {
     .from(invoices)
     .innerJoin(clients, eq(clients.id, invoices.clientId))
     .innerJoin(businesses, eq(businesses.id, invoices.businessId))
+    .where(and(...filters))
     .orderBy(desc(invoices.issueDate), desc(invoices.id));
+}
+
+/** Invoice counts per status, for the tab badges. */
+export async function countInvoicesByStatus() {
+  const rows = await getDb()
+    .select({ status: invoices.status, n: sql<number>`count(*)` })
+    .from(invoices)
+    .groupBy(invoices.status);
+  return Object.fromEntries(rows.map((r) => [r.status, r.n])) as Partial<Record<(typeof invoices.$inferSelect)["status"], number>>;
+}
+
+/** Marks a draft as sent. The guard in the WHERE keeps a double click from re-sending. */
+export async function sendInvoice(id: number): Promise<boolean> {
+  const found = await getInvoice(id);
+  if (!found || !canSend(found.invoice.status)) return false;
+  await getDb()
+    .update(invoices)
+    .set({ status: "sent", sentAt: sql`(datetime('now'))`, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(invoices.id, id), eq(invoices.status, "draft")));
+  return true;
+}
+
+/** Voids an invoice but keeps the row, so its number stays used and it still lists as void. */
+export async function voidInvoice(id: number): Promise<boolean> {
+  const found = await getInvoice(id);
+  if (!found || !canVoid(found.invoice.status, found.invoice.paidCents)) return false;
+  await getDb()
+    .update(invoices)
+    .set({ status: "void", voidedAt: sql`(datetime('now'))`, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(invoices.id, id), eq(invoices.paidCents, 0), sql`${invoices.status} NOT IN ('void', 'paid')`));
+  return true;
+}
+
+/** Copies an invoice into a new draft with the next number, dated today. */
+export async function duplicateInvoice(id: number): Promise<number | null> {
+  const found = await getInvoice(id);
+  if (!found) return null;
+  const business = await getBusiness(found.invoice.businessId);
+  if (!business) return null;
+  const today = todayChicago();
+  return createInvoice({
+    businessId: business.id,
+    clientId: found.invoice.clientId,
+    issueDate: today,
+    dueDate: addDays(today, business.termsDays),
+    notesMd: found.invoice.notesMd,
+    items: found.items.map((i) => ({
+      description: i.description,
+      qtyMilli: i.qtyMilli,
+      unitPriceCents: i.unitPriceCents,
+      taxRateBp: i.taxRateBp,
+    })),
+  });
 }
 
 export async function getInvoice(id: number) {
