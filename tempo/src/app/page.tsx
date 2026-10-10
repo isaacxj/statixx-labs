@@ -18,7 +18,7 @@ function Section({ title, count, children }: { title: string; count: number; chi
 export default async function HomePage() {
   const [businesses, clients, projects] = await Promise.all([listBusinesses(), listClients(), listProjects()]);
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-8">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Tempo</h1>
         <p className="text-muted-foreground">Time tracking and project profitability. Seeded data from local D1.</p>
@@ -58,6 +58,6 @@ export default async function HomePage() {
           </li>
         ))}
       </Section>
-    </main>
+    </div>
   );
 }
