@@ -3,9 +3,10 @@ import { computeTotals } from "@/lib/invoice-math";
 import type { InvoiceInput } from "@/lib/invoice-form";
 import { likePattern } from "@/lib/client-form";
 import { addDays, todayChicago } from "@/lib/dates";
+import type { PaymentInput } from "@/lib/payments";
 import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-status";
-import { getDb } from "./index";
-import { businesses, clients, invoiceItems, invoices } from "./schema";
+import { getD1, getDb } from "./index";
+import { businesses, clients, invoiceItems, invoices, payments } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -222,4 +223,32 @@ export async function updateDraftInvoice(id: number, input: InvoiceInput): Promi
     db.insert(invoiceItems).values(itemRows(id, input.items)),
   ]);
   return true;
+}
+
+export async function listPayments(invoiceId: number) {
+  return getDb().select().from(payments).where(eq(payments.invoiceId, invoiceId)).orderBy(asc(payments.paidOn), asc(payments.id));
+}
+
+/**
+ * Records a payment and moves the invoice's paid amount and status in one batch.
+ * Both statements carry the same guard (issued, unsettled, and not overpaid), so a stale
+ * form or a double click records nothing instead of overpaying. Returns whether it applied.
+ */
+export async function recordPayment(invoiceId: number, input: PaymentInput): Promise<boolean> {
+  const d1 = getD1();
+  const guard = `FROM invoices WHERE id = ?1 AND status IN ('sent','viewed','partially_paid','overdue') AND paid_cents + ?2 <= total_cents`;
+  const [inserted] = await d1.batch([
+    d1
+      .prepare(`INSERT INTO payments (invoice_id, amount_cents, paid_on, method, reference) SELECT id, ?2, ?3, ?4, ?5 ${guard}`)
+      .bind(invoiceId, input.amountCents, input.paidOn, input.method, input.reference),
+    d1
+      .prepare(
+        `UPDATE invoices SET paid_cents = paid_cents + ?2,
+           status = CASE WHEN paid_cents + ?2 >= total_cents THEN 'paid' ELSE 'partially_paid' END,
+           updated_at = datetime('now')
+         WHERE id = ?1 AND status IN ('sent','viewed','partially_paid','overdue') AND paid_cents + ?2 <= total_cents`,
+      )
+      .bind(invoiceId, input.amountCents),
+  ]);
+  return (inserted.meta.changes ?? 0) > 0;
 }

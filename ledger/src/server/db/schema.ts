@@ -73,3 +73,16 @@ export const invoiceItems = sqliteTable("invoice_items", {
   taxRateBp: integer("tax_rate_bp").notNull().default(0),
   ...timestamps,
 });
+
+export const PAYMENT_METHODS = ["bank_transfer", "e_transfer", "card", "cheque", "cash", "other"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const payments = sqliteTable("payments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  paidOn: text("paid_on").notNull(),
+  method: text("method", { enum: PAYMENT_METHODS }).notNull().default("bank_transfer"),
+  reference: text("reference").notNull().default(""),
+  ...timestamps,
+});

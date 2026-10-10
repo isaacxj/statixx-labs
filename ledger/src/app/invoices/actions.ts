@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { parseInvoiceForm, type InvoiceErrors } from "@/lib/invoice-form";
-import { createInvoice, duplicateInvoice, sendInvoice, updateDraftInvoice, voidInvoice } from "@/server/db/queries";
+import { todayChicago } from "@/lib/dates";
+import { balanceCents, canRecordPayment, parsePaymentForm, type PaymentErrors } from "@/lib/payments";
+import { createInvoice, duplicateInvoice, getInvoice, recordPayment, sendInvoice, updateDraftInvoice, voidInvoice } from "@/server/db/queries";
 
 export type InvoiceFormState = { errors: InvoiceErrors; saved?: number } | null;
 
@@ -37,4 +39,19 @@ export async function duplicate(id: number) {
   if (copy === null) return;
   revalidatePath("/invoices");
   redirect(`/invoices/${copy}`);
+}
+
+export type PaymentFormState = { errors: PaymentErrors; saved?: boolean } | null;
+
+export async function savePayment(id: number, _prev: PaymentFormState, data: FormData): Promise<PaymentFormState> {
+  const found = await getInvoice(id);
+  if (!found || !canRecordPayment(found.invoice.status)) {
+    return { errors: { amount: "This invoice can't take a payment. Reload and try again." } };
+  }
+  const { totalCents, paidCents } = found.invoice;
+  const parsed = parsePaymentForm(data, balanceCents(totalCents, paidCents), todayChicago());
+  if (!parsed.ok) return { errors: parsed.errors };
+  if (!(await recordPayment(id, parsed.value))) return { errors: { amount: "The balance changed. Reload and try again." } };
+  refresh(id);
+  return { errors: {}, saved: true };
 }
