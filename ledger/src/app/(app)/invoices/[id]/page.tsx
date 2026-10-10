@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getInvoice, listEvents, listPayments } from "@/server/db/queries";
+import { getInvoice, getRetainer, listEvents, listPayments } from "@/server/db/queries";
 import { canSend, canVoid, statusLabel, statusTone } from "@/lib/invoice-status";
 import { formatDate, todayChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
@@ -30,6 +30,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const editable = invoice.status === "draft";
   const paymentList = await listPayments(invoice.id);
   const eventList = await listEvents(invoice.id);
+  const retainer = invoice.retainerId ? await getRetainer(invoice.retainerId) : null;
   const balance = balanceCents(invoice.totalCents, invoice.paidCents);
   const money = (c: number) => formatMoney(c, invoice.currency);
   return (
@@ -41,6 +42,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         <div className="flex items-center gap-3">
           <h1 className="font-mono text-2xl font-semibold tracking-tight">{invoice.number}</h1>
           <Badge tone={statusTone(invoice.status)} className="capitalize">{statusLabel(invoice.status)}</Badge>
+          {retainer && (
+            <Link href={`/retainers/${retainer.id}`} className="text-muted-foreground hover:text-foreground text-13 inline-flex items-center gap-1">
+              <Repeat className="size-4" />{retainer.title}
+            </Link>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {canRecordPayment(invoice.status) && <PaymentSheet invoiceId={invoice.id} balanceCents={balance} today={todayChicago()} />}

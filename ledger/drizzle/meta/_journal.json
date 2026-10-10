@@ -36,6 +36,13 @@
       "when": 1791639466079,
       "tag": "0004_rich_virginia_dare",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791643063804,
+      "tag": "0005_open_proteus",
+      "breakpoints": true
     }
   ]
 }

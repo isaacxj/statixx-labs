@@ -27,3 +27,15 @@ Database commands only ever touch the local D1 database. After editing `src/serv
 ## Design system and shell
 
 Tokens (OKLCH, light and dark) live in `src/app/globals.css`; `/design` shows every token and base component. Theme is light, dark, or system and is remembered. The signed-in email comes from the Cloudflare Access header; set `DEV_USER_EMAIL` in a local `.dev.vars` file to see initials in development.
+
+## Jobs Worker
+
+`workers/jobs/` is a separate Worker with a daily Cron Trigger. It creates the invoice for every retainer run that has come due (already marked sent, with a share link), and marks sent, viewed, and partially paid invoices past their due date as overdue. It is safe to run twice: each retainer run is unique by retainer and issue date.
+
+Try it locally against the same local D1 database the app uses:
+
+```bash
+pnpm db:migrate
+pnpm jobs:dev
+curl "http://localhost:8788/__scheduled?cron=0+12+*+*+*"
+```

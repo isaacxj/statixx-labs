@@ -60,7 +60,11 @@ export const invoices = sqliteTable(
     voidedAt: text("voided_at"),
     ...timestamps,
   },
-  (t) => [uniqueIndex("invoices_business_number").on(t.businessId, t.number)],
+  (t) => [
+    uniqueIndex("invoices_business_number").on(t.businessId, t.number),
+    // One invoice per retainer run, so the jobs Worker can run twice without duplicating.
+    uniqueIndex("invoices_retainer_run").on(t.retainerId, t.issueDate).where(sql`${t.retainerId} IS NOT NULL`),
+  ],
 );
 
 export const invoiceItems = sqliteTable("invoice_items", {
