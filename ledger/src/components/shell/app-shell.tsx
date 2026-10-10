@@ -3,11 +3,13 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { BottomNav } from "./bottom-nav";
 import { CommandPalette } from "./command-palette";
+import { Toaster } from "@/components/toaster";
 import { listClients, listInvoices } from "@/server/db/queries";
 
 export async function AppShell({ children }: { children: React.ReactNode }) {
   const [user, invoices, clients] = await Promise.all([getCurrentUser(), listInvoices(), listClients()]);
   return (
+    <Toaster>
     <div className="flex min-h-dvh">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -20,5 +22,6 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         clients={clients.map((c) => ({ id: c.id, label: c.name, hint: [c.company, c.email].filter(Boolean).join(" ") }))}
       />
     </div>
+    </Toaster>
   );
 }

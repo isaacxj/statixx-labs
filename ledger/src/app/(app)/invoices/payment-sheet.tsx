@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Banknote, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/toaster";
 import { Field, Input, Select } from "@/components/ui/field";
 import { centsToText } from "@/lib/invoice-math";
 import { METHOD_LABELS } from "@/lib/payments";
@@ -12,19 +13,18 @@ export function PaymentSheet({ invoiceId, balanceCents, today }: { invoiceId: nu
   const dialog = useRef<HTMLDialogElement>(null);
   const [state, action, pending] = useActionState<PaymentFormState, FormData>(savePayment.bind(null, invoiceId), null);
   const e = state?.errors ?? {};
+  const toast = useToast();
 
   useEffect(() => {
-    if (state?.saved) dialog.current?.close();
-  }, [state]);
+    if (state?.saved) {
+      dialog.current?.close();
+      toast({ message: "Payment recorded." });
+    }
+  }, [state, toast]);
 
   return (
     <>
       <Button type="button" data-shortcut="record-payment" onClick={() => dialog.current?.showModal()}><Banknote />Record payment</Button>
-      {state?.saved && (
-        <p role="status" className="bg-card rounded-card text-13 fixed right-4 bottom-20 z-50 border px-4 py-3 shadow-[var(--shadow-overlay)] md:bottom-4">
-          Payment recorded.
-        </p>
-      )}
       <dialog
         ref={dialog}
         aria-labelledby="payment-sheet-title"

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { parseInvoiceForm, type InvoiceErrors } from "@/lib/invoice-form";
 import { todayChicago } from "@/lib/dates";
 import { balanceCents, canRecordPayment, parsePaymentForm, type PaymentErrors } from "@/lib/payments";
-import { createInvoice, duplicateInvoice, getInvoice, recordPayment, sendInvoice, updateDraftInvoice, voidInvoice } from "@/server/db/queries";
+import { createInvoice, duplicateInvoice, getInvoice, recordPayment, sendInvoice, unsendInvoice, unvoidInvoice, updateDraftInvoice, voidInvoice } from "@/server/db/queries";
 
 export type InvoiceFormState = { errors: InvoiceErrors; saved?: number } | null;
 
@@ -27,11 +27,27 @@ function refresh(id: number) {
 }
 
 export async function markSent(id: number) {
-  if (await sendInvoice(id)) refresh(id);
+  const done = await sendInvoice(id);
+  if (done) refresh(id);
+  return done;
 }
 
 export async function markVoid(id: number) {
-  if (await voidInvoice(id)) refresh(id);
+  const done = await voidInvoice(id);
+  if (done) refresh(id);
+  return done;
+}
+
+export async function undoSent(id: number) {
+  const done = await unsendInvoice(id);
+  if (done) refresh(id);
+  return done;
+}
+
+export async function undoVoid(id: number) {
+  const done = await unvoidInvoice(id);
+  if (done) refresh(id);
+  return done;
 }
 
 export async function duplicate(id: number) {

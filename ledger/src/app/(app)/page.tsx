@@ -17,9 +17,9 @@ const BAR_TONE: Record<AgingBucket, string> = {
 
 function Kpi({ label, amounts, tone }: { label: string; amounts: CurrencyAmounts; tone?: "danger" }) {
   return (
-    <div className="bg-card rounded-card flex flex-col gap-1 border p-4">
+    <div className="bg-card rounded-card flex items-baseline justify-between gap-3 border px-4 py-3 sm:flex-col sm:items-stretch sm:justify-start sm:gap-1 sm:p-4">
       <dt className="text-muted-foreground text-13">{label}</dt>
-      <dd className={`font-mono text-20 font-semibold tabular-nums ${tone === "danger" ? "text-danger" : ""}`}>{amountsLabel(amounts)}</dd>
+      <dd className={`font-mono text-16 font-semibold tabular-nums max-sm:text-right sm:text-20 ${tone === "danger" ? "text-danger" : ""}`}>{amountsLabel(amounts)}</dd>
     </div>
   );
 }
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">Invoices, retainers, and payments as of {formatDate(d.today)}.</p>
       </header>
-      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="grid grid-cols-1 gap-2 sm:gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Outstanding" amounts={d.outstanding} />
         <Kpi label="Overdue" amounts={d.overdue} tone="danger" />
         <Kpi label="Paid this month" amounts={d.paidThisMonth} />

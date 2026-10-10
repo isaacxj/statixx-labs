@@ -154,6 +154,31 @@ export async function voidInvoice(id: number): Promise<boolean> {
   return true;
 }
 
+/** Undo for "mark as sent": back to draft, only while nothing has happened to the invoice since. */
+export async function unsendInvoice(id: number): Promise<boolean> {
+  const d1 = getD1();
+  const guard = `FROM invoices WHERE id = ?1 AND status = 'sent' AND viewed_at IS NULL AND paid_cents = 0`;
+  const [, res] = await d1.batch([
+    d1.prepare(`DELETE FROM events WHERE invoice_id = ?1 AND type = 'sent' AND EXISTS (SELECT 1 ${guard})`).bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = 'draft', sent_at = NULL, updated_at = datetime('now') WHERE id = ?1 AND status = 'sent' AND viewed_at IS NULL AND paid_cents = 0`)
+      .bind(id),
+  ]);
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** Undo for "void": back to sent (or draft if it was never sent), and the voided event is removed. */
+export async function unvoidInvoice(id: number): Promise<boolean> {
+  const d1 = getD1();
+  const [, res] = await d1.batch([
+    d1.prepare(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE invoice_id = ?1 AND type = 'voided') AND EXISTS (SELECT 1 FROM invoices WHERE id = ?1 AND status = 'void')`).bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = CASE WHEN sent_at IS NULL THEN 'draft' ELSE 'sent' END, voided_at = NULL, updated_at = datetime('now') WHERE id = ?1 AND status = 'void'`)
+      .bind(id),
+  ]);
+  return (res.meta.changes ?? 0) > 0;
+}
+
 /** Copies an invoice into a new draft with the next number, dated today. */
 export async function duplicateInvoice(id: number): Promise<number | null> {
   const found = await getInvoice(id);
