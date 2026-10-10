@@ -39,3 +39,7 @@ pnpm db:migrate
 pnpm jobs:dev
 curl "http://localhost:8788/__scheduled?cron=0+12+*+*+*"
 ```
+
+### Morning digest
+
+After the daily jobs, the Worker emails the digest recipient (set in Settings) the overdue invoices, invoices due in the next 7 days, and retainer invoices created in the last day. `/digest` previews it. The Worker sends through the `EMAIL` Email Routing binding from `DIGEST_FROM` (a placeholder in `workers/jobs/wrangler.jsonc` until the sending domain is set up); locally, wrangler writes each email to `workers/jobs/.wrangler/tmp/email/` instead of sending. `pnpm db:seed` adds sample invoices and a recipient so the digest has content.

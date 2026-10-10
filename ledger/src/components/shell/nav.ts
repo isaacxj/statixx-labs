@@ -1,4 +1,4 @@
-import { FileText, Repeat, LayoutDashboard, Palette, Users, Settings, type LucideIcon } from "lucide-react";
+import { FileText, Repeat, LayoutDashboard, Palette, Mail, Users, Settings, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -7,6 +7,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/invoices", label: "Invoices", icon: FileText },
   { href: "/retainers", label: "Retainers", icon: Repeat },
+  { href: "/digest", label: "Digest", icon: Mail },
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/design", label: "Design", icon: Palette },

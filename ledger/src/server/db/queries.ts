@@ -7,8 +7,9 @@ import type { PaymentInput } from "@/lib/payments";
 import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-status";
 import type { RetainerInput } from "@/lib/retainer-form";
 import { runDates } from "@/lib/retainer-schedule";
+import { digestSince, loadDigestData } from "@/lib/digest-data";
 import { getD1, getDb } from "./index";
-import { businesses, clients, events, invoiceItems, invoices, payments, retainers } from "./schema";
+import { businesses, clients, events, invoiceItems, invoices, payments, retainers, settings } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -351,4 +352,26 @@ export async function updateRetainer(id: number, input: RetainerInput) {
     .update(retainers)
     .set({ ...retainerValues(input), updatedAt: sql`(datetime('now'))` })
     .where(eq(retainers.id, id));
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const [row] = await getDb().select().from(settings).where(eq(settings.key, key)).limit(1);
+  return row?.value ?? null;
+}
+
+/** An empty value removes the setting. */
+export async function setSetting(key: string, value: string) {
+  if (!value) {
+    await getDb().delete(settings).where(eq(settings.key, key));
+    return;
+  }
+  await getDb()
+    .insert(settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: sql`(datetime('now'))` } });
+}
+
+/** The morning digest's contents for today, as the jobs Worker would send them. */
+export async function getDigestData(now = new Date()) {
+  return loadDigestData(getD1(), todayChicago(now), digestSince(now));
 }

@@ -117,3 +117,10 @@ export const events = sqliteTable("events", {
   metaJson: text("meta_json").notNull().default("{}"),
   ...timestamps,
 });
+
+/** Small key/value settings, such as the digest recipient. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  ...timestamps,
+});
