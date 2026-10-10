@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/shell/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = { title: "Ledger" };
@@ -14,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="bg-background text-foreground font-sans antialiased">
-        <AppShell>{children}</AppShell>
+        {children}
       </body>
     </html>
   );

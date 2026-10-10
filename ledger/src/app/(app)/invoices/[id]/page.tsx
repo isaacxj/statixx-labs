@@ -11,6 +11,8 @@ import { InvoiceActions } from "../invoice-actions";
 import { InvoiceEditor } from "../invoice-editor";
 import { InvoicePreview } from "../invoice-preview";
 import { PaymentSheet } from "../payment-sheet";
+import { ShareLink } from "../share-link";
+import { sharePath } from "@/lib/share-link";
 import { centsToText, loadEditorOptions, qtyToText, rateText } from "../editor-data";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +76,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             items={items}
             notes={invoice.notesMd}
           />
+          {invoice.status !== "void" && <ShareLink path={sharePath(invoice.shareToken)} />}
           {invoice.status !== "void" && (
             <section aria-labelledby="payments-heading" className="bg-card rounded-card flex flex-col gap-4 border p-5">
               <h2 id="payments-heading" className="text-base font-semibold">Payments</h2>

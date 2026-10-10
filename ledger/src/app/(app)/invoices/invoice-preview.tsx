@@ -73,14 +73,14 @@ export function InvoicePreview({
           <dd className="font-mono">{dueDate ? formatDate(dueDate) : "—"}</dd>
         </div>
       </dl>
-      <div className="overflow-x-auto">
-        <table className="text-13 w-full min-w-96">
+      <div className="overflow-x-auto print:overflow-visible">
+        <table className="text-13 w-full">
           <thead>
             <tr className="text-muted-foreground border-b text-left">
               <th className="py-2 font-medium">Description</th>
               <th className="py-2 text-right font-medium">Qty</th>
               <th className="py-2 text-right font-medium">Price</th>
-              <th className="py-2 text-right font-medium">Tax</th>
+              <th className="hidden py-2 text-right font-medium sm:table-cell">Tax</th>
               <th className="py-2 text-right font-medium">Amount</th>
             </tr>
           </thead>
@@ -93,7 +93,7 @@ export function InvoicePreview({
                 <td className="py-2 pr-3 whitespace-pre-line">{i.description || "—"}</td>
                 <td className="py-2 text-right font-mono tabular-nums">{qty(i.qtyMilli)}</td>
                 <td className="py-2 text-right font-mono tabular-nums">{money(i.unitPriceCents)}</td>
-                <td className="text-muted-foreground py-2 text-right font-mono tabular-nums">{formatRate(i.taxRateBp)}</td>
+                <td className="text-muted-foreground hidden py-2 text-right font-mono tabular-nums sm:table-cell">{formatRate(i.taxRateBp)}</td>
                 <td className="py-2 text-right font-mono tabular-nums">{money(lineAmountCents(i))}</td>
               </tr>
             ))}

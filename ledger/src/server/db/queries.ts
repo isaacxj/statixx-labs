@@ -252,3 +252,18 @@ export async function recordPayment(invoiceId: number, input: PaymentInput): Pro
   ]);
   return (inserted.meta.changes ?? 0) > 0;
 }
+
+/** Everything the public invoice page may show, looked up by share token. Drafts are never public. */
+export async function getInvoiceByToken(token: string) {
+  const db = getDb();
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.shareToken, token)).limit(1);
+  if (!invoice || invoice.status === "draft") return null;
+  const [items, [business], [client], paymentList] = await Promise.all([
+    db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoice.id)).orderBy(asc(invoiceItems.position)),
+    db.select().from(businesses).where(eq(businesses.id, invoice.businessId)).limit(1),
+    db.select().from(clients).where(eq(clients.id, invoice.clientId)).limit(1),
+    db.select().from(payments).where(eq(payments.invoiceId, invoice.id)).orderBy(asc(payments.paidOn), asc(payments.id)),
+  ]);
+  if (!business) return null;
+  return { invoice, items, business, client: client ?? null, payments: paymentList };
+}
