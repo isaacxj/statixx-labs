@@ -26,7 +26,7 @@ export function ShareLink({ path }: { path: string }) {
           {copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy link"}
         </Button>
         <Button variant="outline" asChild>
-          <a href={path} target="_blank" rel="noreferrer"><ExternalLink />Open</a>
+          <a href={`${path}?team=1`} target="_blank" rel="noreferrer"><ExternalLink />Open</a>
         </Button>
       </div>
     </section>

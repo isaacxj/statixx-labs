@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { InvoicePreview } from "@/app/(app)/invoices/invoice-preview";
 import { Badge } from "@/components/ui/badge";
@@ -5,17 +6,28 @@ import { formatDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { balanceCents } from "@/lib/payments";
 import { isShareToken } from "@/lib/share-link";
-import { getInvoiceByToken } from "@/server/db/queries";
+import { shouldRecordView } from "@/lib/activity";
+import { getInvoiceByToken, recordFirstView } from "@/server/db/queries";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Invoice", robots: { index: false, follow: false } };
 
-export default async function PublicInvoicePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PublicInvoicePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ team?: string }>;
+}) {
   const { token } = await params;
+  const { team } = await searchParams;
   const found = isShareToken(token) ? await getInvoiceByToken(token) : null;
   if (!found) notFound();
   const { invoice, items, business, client } = found;
+  // Team members are signed in through Access (header) or use the Open button (?team=1); neither counts as a client view.
+  const isTeam = team === "1" || !!(await headers()).get("cf-access-authenticated-user-email");
+  if (shouldRecordView({ status: invoice.status, viewedAt: invoice.viewedAt, isTeam })) await recordFirstView(invoice.id);
   const balance = balanceCents(invoice.totalCents, invoice.paidCents);
   const paid = invoice.status === "paid";
   const voided = invoice.status === "void";

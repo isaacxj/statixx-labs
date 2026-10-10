@@ -86,3 +86,15 @@ export const payments = sqliteTable("payments", {
   reference: text("reference").notNull().default(""),
   ...timestamps,
 });
+
+export const EVENT_TYPES = ["created", "sent", "viewed", "payment", "overdue", "voided"] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export const events = sqliteTable("events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id),
+  type: text("type", { enum: EVENT_TYPES }).notNull(),
+  at: text("at").notNull().default(sql`(datetime('now'))`),
+  metaJson: text("meta_json").notNull().default("{}"),
+  ...timestamps,
+});

@@ -4,6 +4,7 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ configPath
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM events"),
   db.prepare("DELETE FROM payments"),
   db.prepare("DELETE FROM invoice_items"),
   db.prepare("DELETE FROM invoices"),
