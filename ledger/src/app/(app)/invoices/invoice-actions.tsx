@@ -9,7 +9,7 @@ export function InvoiceActions({ id, canSend, canVoid }: { id: number; canSend: 
     <div className="flex flex-wrap gap-2">
       {canSend && (
         <form action={markSent.bind(null, id)}>
-          <Button type="submit"><Send />Mark as sent</Button>
+          <Button type="submit" data-shortcut="mark-sent"><Send />Mark as sent</Button>
         </form>
       )}
       <form action={duplicate.bind(null, id)}>

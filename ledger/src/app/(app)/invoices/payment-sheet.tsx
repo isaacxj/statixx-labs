@@ -19,7 +19,7 @@ export function PaymentSheet({ invoiceId, balanceCents, today }: { invoiceId: nu
 
   return (
     <>
-      <Button type="button" onClick={() => dialog.current?.showModal()}><Banknote />Record payment</Button>
+      <Button type="button" data-shortcut="record-payment" onClick={() => dialog.current?.showModal()}><Banknote />Record payment</Button>
       {state?.saved && (
         <p role="status" className="bg-card rounded-card text-13 fixed right-4 bottom-20 z-50 border px-4 py-3 shadow-[var(--shadow-overlay)] md:bottom-4">
           Payment recorded.

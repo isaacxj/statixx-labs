@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { ChevronRight, Command } from "lucide-react";
+import { ChevronRight, Command, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { OPEN_PALETTE_EVENT } from "./command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { NAV_ITEMS, isActive } from "./nav";
 
@@ -18,14 +20,16 @@ export function Topbar({ initials, email }: { initials: string; email: string | 
       <div className="ml-auto flex items-center gap-1">
         <button
           type="button"
-          disabled
-          title="Command palette arrives in a later step"
-          className="text-muted-foreground hidden h-8 items-center gap-2 rounded-input border px-2.5 text-13 opacity-70 md:flex"
+          onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}
+          className="text-muted-foreground hover:text-foreground hover:bg-accent hidden h-8 items-center gap-2 rounded-input border px-2.5 text-13 transition-colors duration-150 md:flex"
         >
           <Command className="size-3.5" aria-hidden />
           Search
           <kbd className="bg-muted rounded px-1.5 font-mono text-xs">⌘K</kbd>
         </button>
+        <Button variant="ghost" size="icon" aria-label="Search" className="md:hidden" onClick={() => window.dispatchEvent(new Event(OPEN_PALETTE_EVENT))}>
+          <Search />
+        </Button>
         <ThemeToggle />
         <span
           title={email ?? "Not signed in"}
