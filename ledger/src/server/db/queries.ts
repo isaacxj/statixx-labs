@@ -8,6 +8,9 @@ import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-sta
 import type { RetainerInput } from "@/lib/retainer-form";
 import { runDates } from "@/lib/retainer-schedule";
 import { digestSince, loadDigestData } from "@/lib/digest-data";
+import { monthStart, monthlyRetainerRevenue, summarizeOpen, type CurrencyAmounts, type OpenInvoice, type RetainerRow } from "@/lib/dashboard";
+import type { RetainerItem } from "@/lib/retainer-form";
+import type { CurrencyCode } from "@/lib/money";
 import { getD1, getDb } from "./index";
 import { businesses, clients, events, invoiceItems, invoices, payments, retainers, settings } from "./schema";
 
@@ -374,4 +377,55 @@ export async function setSetting(key: string, value: string) {
 /** The morning digest's contents for today, as the jobs Worker would send them. */
 export async function getDigestData(now = new Date()) {
   return loadDigestData(getD1(), todayChicago(now), digestSince(now));
+}
+
+/** Everything the dashboard shows, computed for `now` (America/Chicago date). */
+export async function getDashboardData(now = new Date()) {
+  const today = todayChicago(now);
+  const d1 = getD1();
+  const [open, paid, retainerRows, upcoming, recent] = await Promise.all([
+    d1
+      .prepare(
+        `SELECT currency, due_date AS dueDate, total_cents - paid_cents AS balanceCents FROM invoices
+         WHERE status IN ('sent', 'viewed', 'partially_paid', 'overdue') AND total_cents > paid_cents`,
+      )
+      .all<OpenInvoice>(),
+    d1
+      .prepare(
+        `SELECT i.currency AS currency, SUM(p.amount_cents) AS cents FROM payments p JOIN invoices i ON i.id = p.invoice_id
+         WHERE p.paid_on >= ?1 AND p.paid_on <= ?2 GROUP BY i.currency`,
+      )
+      .bind(monthStart(today), today)
+      .all<{ currency: CurrencyCode; cents: number }>(),
+    d1
+      .prepare(
+        `SELECT r.cadence AS cadence, b.currency AS currency, r.items_json AS itemsJson FROM retainers r
+         JOIN businesses b ON b.id = r.business_id WHERE r.active = 1`,
+      )
+      .all<RetainerRow>(),
+    d1
+      .prepare(
+        `SELECT r.id AS id, r.title AS title, r.next_run_on AS nextRunOn, r.items_json AS itemsJson, c.name AS clientName, b.currency AS currency
+         FROM retainers r JOIN clients c ON c.id = r.client_id JOIN businesses b ON b.id = r.business_id
+         WHERE r.active = 1 ORDER BY r.next_run_on, r.title LIMIT 5`,
+      )
+      .all<{ id: number; title: string; nextRunOn: string; itemsJson: string; clientName: string; currency: CurrencyCode }>(),
+    d1
+      .prepare(
+        `SELECT p.id AS id, p.amount_cents AS amountCents, p.paid_on AS paidOn, p.method AS method, i.id AS invoiceId, i.number AS number,
+           i.currency AS currency, c.name AS clientName
+         FROM payments p JOIN invoices i ON i.id = p.invoice_id JOIN clients c ON c.id = i.client_id
+         ORDER BY p.paid_on DESC, p.id DESC LIMIT 5`,
+      )
+      .all<{ id: number; amountCents: number; paidOn: string; method: string; invoiceId: number; number: string; currency: CurrencyCode; clientName: string }>(),
+  ]);
+  const paidThisMonth: CurrencyAmounts = Object.fromEntries(paid.results.map((r) => [r.currency, r.cents]));
+  return {
+    today,
+    ...summarizeOpen(open.results, today),
+    paidThisMonth,
+    monthlyRetainers: monthlyRetainerRevenue(retainerRows.results),
+    upcomingRuns: upcoming.results.map(({ itemsJson, ...r }) => ({ ...r, totalCents: computeTotals(JSON.parse(itemsJson) as RetainerItem[]).totalCents })),
+    recentPayments: recent.results,
+  };
 }
