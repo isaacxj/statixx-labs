@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `invoices_retainer_run` ON `invoices` (`retainer_id`,`issue_date`) WHERE "invoices"."retainer_id" IS NOT NULL;
