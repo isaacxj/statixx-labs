@@ -5,8 +5,10 @@ import { likePattern } from "@/lib/client-form";
 import { addDays, todayChicago } from "@/lib/dates";
 import type { PaymentInput } from "@/lib/payments";
 import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-status";
+import type { RetainerInput } from "@/lib/retainer-form";
+import { runDates } from "@/lib/retainer-schedule";
 import { getD1, getDb } from "./index";
-import { businesses, clients, events, invoiceItems, invoices, payments } from "./schema";
+import { businesses, clients, events, invoiceItems, invoices, payments, retainers } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -305,4 +307,48 @@ export async function recordFirstView(invoiceId: number): Promise<void> {
 
 export async function listEvents(invoiceId: number) {
   return getDb().select().from(events).where(eq(events.invoiceId, invoiceId)).orderBy(desc(events.at), desc(events.id));
+}
+
+export async function listRetainers() {
+  return getDb()
+    .select({
+      id: retainers.id,
+      title: retainers.title,
+      cadence: retainers.cadence,
+      active: retainers.active,
+      nextRunOn: retainers.nextRunOn,
+      itemsJson: retainers.itemsJson,
+      clientName: clients.name,
+      businessName: businesses.name,
+      currency: businesses.currency,
+    })
+    .from(retainers)
+    .innerJoin(clients, eq(clients.id, retainers.clientId))
+    .innerJoin(businesses, eq(businesses.id, retainers.businessId))
+    .orderBy(desc(retainers.active), asc(retainers.nextRunOn), asc(retainers.title));
+}
+
+export async function getRetainer(id: number) {
+  const [row] = await getDb().select().from(retainers).where(eq(retainers.id, id)).limit(1);
+  return row ?? null;
+}
+
+function retainerValues(input: RetainerInput) {
+  const { items, ...rest } = input;
+  const nextRunOn = rest.active
+    ? (runDates(rest, 1, todayChicago())[0] ?? null)
+    : null;
+  return { ...rest, nextRunOn, itemsJson: JSON.stringify(items) };
+}
+
+export async function createRetainer(input: RetainerInput) {
+  const [row] = await getDb().insert(retainers).values(retainerValues(input)).returning({ id: retainers.id });
+  return row.id;
+}
+
+export async function updateRetainer(id: number, input: RetainerInput) {
+  await getDb()
+    .update(retainers)
+    .set({ ...retainerValues(input), updatedAt: sql`(datetime('now'))` })
+    .where(eq(retainers.id, id));
 }

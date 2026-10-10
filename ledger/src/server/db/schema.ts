@@ -74,6 +74,21 @@ export const invoiceItems = sqliteTable("invoice_items", {
   ...timestamps,
 });
 
+export const retainers = sqliteTable("retainers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  businessId: integer("business_id").notNull().references(() => businesses.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
+  title: text("title").notNull(),
+  cadence: text("cadence", { enum: ["monthly", "quarterly"] }).notNull().default("monthly"),
+  anchorDay: integer("anchor_day").notNull(),
+  startsOn: text("starts_on").notNull(),
+  endsOn: text("ends_on"),
+  nextRunOn: text("next_run_on"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  itemsJson: text("items_json").notNull().default("[]"),
+  ...timestamps,
+});
+
 export const PAYMENT_METHODS = ["bank_transfer", "e_transfer", "card", "cheque", "cash", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
