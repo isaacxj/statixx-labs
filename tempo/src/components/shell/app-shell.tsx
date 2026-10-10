@@ -1,13 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PanelLeft, Timer } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { BottomNav, SidebarLinks } from "./nav-links";
+import { TimerBar, type RunningTimer, type TimerProject } from "./timer-bar";
 
-export function AppShell({ initials, email, children }: { initials: string; email: string; children: React.ReactNode }) {
+export function AppShell({
+  initials,
+  email,
+  projects,
+  running,
+  children,
+}: {
+  initials: string;
+  email: string;
+  projects: TimerProject[];
+  running: RunningTimer | null;
+  children: React.ReactNode;
+}) {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -53,14 +66,7 @@ export function AppShell({ initials, email, children }: { initials: string; emai
             <PanelLeft />
           </Button>
           <span className="text-lg font-semibold tracking-tight md:hidden">Tempo</span>
-          <div
-            className="text-muted-foreground bg-card ml-2 hidden h-9 min-w-0 flex-1 items-center gap-2 rounded-input border px-3 sm:flex sm:max-w-md"
-            aria-label="Timer (coming with the timer step)"
-          >
-            <Timer className="size-4 shrink-0" />
-            <span className="truncate text-sm">Timer</span>
-            <span className="tabular ml-auto text-sm">0:00:00</span>
-          </div>
+          <TimerBar projects={projects} running={running} />
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
             <span

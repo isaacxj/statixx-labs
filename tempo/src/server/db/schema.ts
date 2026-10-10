@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const timestamps = {
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
@@ -41,3 +41,17 @@ export const projects = sqliteTable("projects", {
   color: text("color").notNull().default("#F59E0B"),
   ...timestamps,
 });
+
+export const timeEntries = sqliteTable("time_entries", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  ownerEmail: text("owner_email").notNull(),
+  description: text("description").notNull().default(""),
+  startedAt: text("started_at").notNull(),
+  endedAt: text("ended_at"),
+  minutes: integer("minutes").notNull().default(0),
+  billable: integer("billable", { mode: "boolean" }).notNull().default(true),
+  billedAt: text("billed_at"),
+  billedRef: text("billed_ref"),
+  ...timestamps,
+}, (t) => [uniqueIndex("one_running_timer_per_owner").on(t.ownerEmail).where(sql`ended_at is null`)]);

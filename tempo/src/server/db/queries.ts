@@ -1,6 +1,7 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
-import { businesses, clients, projects } from "./schema";
+import { businesses, clients, projects, timeEntries } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -79,4 +80,64 @@ export async function updateProject(id: number, values: ProjectValues) {
 
 export async function setProjectStatus(id: number, status: "active" | "archived") {
   await getDb().update(projects).set({ status, updatedAt: sql`(datetime('now'))` }).where(eq(projects.id, id));
+}
+
+export async function listActiveProjectOptions() {
+  const rows = await listProjects();
+  return rows
+    .filter((p) => p.status === "active")
+    .map((p) => ({ id: p.id, name: p.name, clientName: p.clientName, color: p.color }));
+}
+
+export async function getRunningEntry(ownerEmail: string) {
+  const rows = await getDb()
+    .select({
+      id: timeEntries.id,
+      projectId: timeEntries.projectId,
+      description: timeEntries.description,
+      startedAt: timeEntries.startedAt,
+    })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.ownerEmail, ownerEmail), isNull(timeEntries.endedAt)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Stops the owner's running timer, if any, and returns the finished entry id. */
+export async function stopTimer(ownerEmail: string, now = new Date()) {
+  const running = await getRunningEntry(ownerEmail);
+  if (!running) return null;
+  const endedAt = now.toISOString();
+  await getDb()
+    .update(timeEntries)
+    .set({ endedAt, minutes: minutesBetween(running.startedAt, endedAt), updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(timeEntries.id, running.id), isNull(timeEntries.endedAt)));
+  return running.id;
+}
+
+/** Starts a timer, stopping any running one first, in one atomic batch. */
+export async function startTimer(ownerEmail: string, projectId: number, description: string, now = new Date()) {
+  const db = getDb();
+  const running = await getRunningEntry(ownerEmail);
+  const iso = now.toISOString();
+  const [project] = await db.select({ billing: projects.billing }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) throw new Error("Unknown project");
+  const insert = db.insert(timeEntries).values({
+    projectId,
+    ownerEmail,
+    description,
+    startedAt: iso,
+    billable: project.billing !== "non_billable",
+  });
+  if (running) {
+    await db.batch([
+      db
+        .update(timeEntries)
+        .set({ endedAt: iso, minutes: minutesBetween(running.startedAt, iso), updatedAt: sql`(datetime('now'))` })
+        .where(eq(timeEntries.id, running.id)),
+      insert,
+    ]);
+  } else {
+    await insert;
+  }
 }
