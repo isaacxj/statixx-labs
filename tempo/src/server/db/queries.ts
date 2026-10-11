@@ -1,4 +1,5 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import type { EntryInput } from "@/lib/entries";
 import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
 import { businesses, clients, projects, timeEntries } from "./schema";
@@ -140,4 +141,51 @@ export async function startTimer(ownerEmail: string, projectId: number, descript
   } else {
     await insert;
   }
+}
+
+/** The owner's finished entries, newest first, with project and client names. */
+export async function listEntries(ownerEmail: string, limit = 200) {
+  return getDb()
+    .select({
+      id: timeEntries.id,
+      projectId: timeEntries.projectId,
+      projectName: projects.name,
+      clientName: clients.name,
+      color: projects.color,
+      description: timeEntries.description,
+      startedAt: timeEntries.startedAt,
+      endedAt: timeEntries.endedAt,
+      minutes: timeEntries.minutes,
+      billable: timeEntries.billable,
+    })
+    .from(timeEntries)
+    .innerJoin(projects, eq(timeEntries.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(and(eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt)))
+    .orderBy(desc(timeEntries.startedAt))
+    .limit(limit);
+}
+
+export async function createManualEntry(ownerEmail: string, input: EntryInput) {
+  const [project] = await getDb().select({ billing: projects.billing }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!project) throw new Error("Unknown project");
+  await getDb().insert(timeEntries).values({ ...input, ownerEmail, billable: project.billing !== "non_billable" });
+}
+
+/** Deletes one of the owner's finished entries. Billed entries stay. */
+export async function deleteEntry(ownerEmail: string, id: number) {
+  await getDb()
+    .delete(timeEntries)
+    .where(and(eq(timeEntries.id, id), eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt), isNull(timeEntries.billedAt)));
+}
+
+/** Starts a new timer on the same project and description as an earlier entry. */
+export async function restartEntry(ownerEmail: string, id: number) {
+  const [entry] = await getDb()
+    .select({ projectId: timeEntries.projectId, description: timeEntries.description })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.id, id), eq(timeEntries.ownerEmail, ownerEmail)))
+    .limit(1);
+  if (!entry) return;
+  await startTimer(ownerEmail, entry.projectId, entry.description);
 }
