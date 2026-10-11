@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
 import { AppShell } from "@/components/shell/app-shell";
 import { initialsFromEmail } from "@/lib/user";
 import { getRunningEntry, listActiveProjectOptions } from "@/server/db/queries";
@@ -24,6 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <AppShell initials={initialsFromEmail(user.email)} email={user.email} projects={projects} running={running}>
           {children}
         </AppShell>
+        <Toaster />
       </body>
     </html>
   );

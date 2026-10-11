@@ -1,9 +1,11 @@
 "use client";
 
 import { startTransition, useActionState, useState } from "react";
+import { toast } from "sonner";
 import { Pencil, Play, Scissors, Trash2 } from "lucide-react";
 import {
   deleteEntryAction,
+  restoreEntryAction,
   restartEntryAction,
   splitEntryAction,
   updateEntryAction,
@@ -125,7 +127,12 @@ export function EntryRow({ entry: en, projects }: { entry: EntryRowData; project
         </div>
         <div className="ml-auto flex items-center gap-1 max-sm:w-full max-sm:justify-end">
         <span className="mr-2 font-mono text-sm tabular-nums">{formatDuration(en.minutes)}</span>
-        <form action={restartEntryAction.bind(null, en.id)}>
+        <form
+          action={async () => {
+            await restartEntryAction(en.id);
+            toast.success(`Timer started on ${en.projectName}`);
+          }}
+        >
           <Button variant="ghost" size="icon" type="submit" aria-label={`Restart ${label}`}>
             <Play />
           </Button>
@@ -138,7 +145,21 @@ export function EntryRow({ entry: en, projects }: { entry: EntryRowData; project
             <Button variant="ghost" size="icon" aria-label={`Split ${label}`} disabled={en.minutes < 2} onClick={() => setMode(mode === "split" ? "view" : "split")}>
               <Scissors />
             </Button>
-            <form action={deleteEntryAction.bind(null, en.id)}>
+            <form
+              action={async () => {
+                await deleteEntryAction(en.id);
+                toast(`Deleted ${label}`, {
+                  duration: 8000,
+                  action: {
+                    label: "Undo",
+                    onClick: async () => {
+                      await restoreEntryAction({ projectId: en.projectId, description: en.description, startedAt: en.startedAt, endedAt: en.endedAt, minutes: en.minutes, billable: en.billable });
+                      toast.success("Entry restored");
+                    },
+                  },
+                });
+              }}
+            >
               <Button variant="ghost" size="icon" type="submit" aria-label={`Delete ${label}`}>
                 <Trash2 />
               </Button>

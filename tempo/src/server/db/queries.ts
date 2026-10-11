@@ -228,6 +228,16 @@ export async function deleteEntry(ownerEmail: string, id: number) {
     .where(and(eq(timeEntries.id, id), eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt), isNull(timeEntries.billedAt)));
 }
 
+/** Puts back an entry that was just deleted (the undo toast), with its original times and billable flag. */
+export async function restoreEntry(
+  ownerEmail: string,
+  e: { projectId: number; description: string; startedAt: string; endedAt: string; minutes: number; billable: boolean },
+) {
+  const [project] = await getDb().select({ id: projects.id }).from(projects).where(eq(projects.id, e.projectId)).limit(1);
+  if (!project) return;
+  await getDb().insert(timeEntries).values({ ...e, ownerEmail });
+}
+
 /** Starts a new timer on the same project and description as an earlier entry. */
 export async function restartEntry(ownerEmail: string, id: number) {
   const [entry] = await getDb()
