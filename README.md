@@ -3,3 +3,4 @@
 Statixx Labs, an archive of business tools. Each tool lives in its own folder.
 
 - [`pitch/`](pitch): proposals and quotes with private client links, view tracking, and accept or decline.
+- [`portal/`](portal): a private portal per client with project status, milestones, updates, files, approvals, and requests.
