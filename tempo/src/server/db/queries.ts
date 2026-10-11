@@ -1,12 +1,29 @@
 import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { centralToUtc, splitEntryTimes, type EntryInput } from "@/lib/entries";
 import { addDays, planCellEdit } from "@/lib/timesheet";
+import { defaultBillable, roundMinutes } from "@/lib/rounding";
 import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
 import { businesses, clients, projects, timeEntries } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
+}
+
+export async function updateBusinessRounding(id: number, roundingMinutes: number) {
+  await getDb().update(businesses).set({ roundingMinutes, updatedAt: sql`(datetime('now'))` }).where(eq(businesses.id, id));
+}
+
+/** The rounding increment (0, 6, or 15) of the business a project's client belongs to. */
+export async function getRoundingForProject(projectId: number): Promise<number> {
+  const rows = await getDb()
+    .select({ rounding: businesses.roundingMinutes })
+    .from(projects)
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .innerJoin(businesses, eq(clients.businessId, businesses.id))
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return rows[0]?.rounding ?? 0;
 }
 
 export async function listClients() {
@@ -110,9 +127,10 @@ export async function stopTimer(ownerEmail: string, now = new Date()) {
   const running = await getRunningEntry(ownerEmail);
   if (!running) return null;
   const endedAt = now.toISOString();
+  const rounding = await getRoundingForProject(running.projectId);
   await getDb()
     .update(timeEntries)
-    .set({ endedAt, minutes: minutesBetween(running.startedAt, endedAt), updatedAt: sql`(datetime('now'))` })
+    .set({ endedAt, minutes: roundMinutes(minutesBetween(running.startedAt, endedAt), rounding), updatedAt: sql`(datetime('now'))` })
     .where(and(eq(timeEntries.id, running.id), isNull(timeEntries.endedAt)));
   return running.id;
 }
@@ -122,6 +140,7 @@ export async function startTimer(ownerEmail: string, projectId: number, descript
   const db = getDb();
   const running = await getRunningEntry(ownerEmail);
   const iso = now.toISOString();
+  const rounding = running ? await getRoundingForProject(running.projectId) : 0;
   const [project] = await db.select({ billing: projects.billing }).from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!project) throw new Error("Unknown project");
   const insert = db.insert(timeEntries).values({
@@ -129,13 +148,13 @@ export async function startTimer(ownerEmail: string, projectId: number, descript
     ownerEmail,
     description,
     startedAt: iso,
-    billable: project.billing !== "non_billable",
+    billable: defaultBillable(project.billing),
   });
   if (running) {
     await db.batch([
       db
         .update(timeEntries)
-        .set({ endedAt: iso, minutes: minutesBetween(running.startedAt, iso), updatedAt: sql`(datetime('now'))` })
+        .set({ endedAt: iso, minutes: roundMinutes(minutesBetween(running.startedAt, iso), rounding), updatedAt: sql`(datetime('now'))` })
         .where(eq(timeEntries.id, running.id)),
       insert,
     ]);
@@ -171,7 +190,7 @@ export async function listEntries(ownerEmail: string, limit = 200) {
 export async function createManualEntry(ownerEmail: string, input: EntryInput) {
   const [project] = await getDb().select({ billing: projects.billing }).from(projects).where(eq(projects.id, input.projectId)).limit(1);
   if (!project) throw new Error("Unknown project");
-  await getDb().insert(timeEntries).values({ ...input, ownerEmail, billable: project.billing !== "non_billable" });
+  await getDb().insert(timeEntries).values({ ...input, ownerEmail, billable: defaultBillable(project.billing) });
 }
 
 /** Deletes one of the owner's finished entries. Billed entries stay. */
@@ -277,7 +296,7 @@ export async function setCellMinutes(ownerEmail: string, projectId: number, day:
         startedAt,
         endedAt,
         minutes: plan.create,
-        billable: project.billing !== "non_billable",
+        billable: defaultBillable(project.billing),
       }) as never,
     );
   }

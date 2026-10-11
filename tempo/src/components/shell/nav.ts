@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, Clock, FolderKanban, Palette, Users, type LucideIcon } from "lucide-react";
+import { CalendarClock, CalendarDays, Clock, FolderKanban, Palette, Settings, Users, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -9,5 +9,6 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/week", label: "Week", icon: CalendarDays },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/clients", label: "Clients", icon: Users },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/design", label: "Design", icon: Palette },
 ];
