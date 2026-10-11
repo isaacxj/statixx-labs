@@ -336,3 +336,22 @@ export async function listAllProjectEntries() {
   for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
   return byProject;
 }
+
+/** Finished entries from everyone that start in [from, to), with names, for reports and exports. */
+export async function listReportEntries(from: string, to: string) {
+  return getDb()
+    .select({
+      startedAt: timeEntries.startedAt,
+      minutes: timeEntries.minutes,
+      billable: timeEntries.billable,
+      projectId: timeEntries.projectId,
+      projectName: projects.name,
+      clientName: clients.name,
+      description: timeEntries.description,
+    })
+    .from(timeEntries)
+    .innerJoin(projects, eq(timeEntries.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .where(and(isNotNull(timeEntries.endedAt), gte(timeEntries.startedAt, from), lt(timeEntries.startedAt, to)))
+    .orderBy(asc(timeEntries.startedAt));
+}
