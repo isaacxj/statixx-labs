@@ -303,3 +303,22 @@ export async function setCellMinutes(ownerEmail: string, projectId: number, day:
   if (ops.length > 0) await db.batch(ops as [(typeof ops)[0], ...(typeof ops)[0][]]);
   return null;
 }
+
+/** Finished minutes logged so far on each project, across everyone. */
+export async function getProjectUsedMinutes(): Promise<Map<number, number>> {
+  const rows = await getDb()
+    .select({ projectId: timeEntries.projectId, minutes: sql<number>`coalesce(sum(${timeEntries.minutes}), 0)` })
+    .from(timeEntries)
+    .where(isNotNull(timeEntries.endedAt))
+    .groupBy(timeEntries.projectId);
+  return new Map(rows.map((r) => [r.projectId, Number(r.minutes)]));
+}
+
+/** A project's finished entries, oldest first, for the burn chart. */
+export async function listProjectEntries(projectId: number) {
+  return getDb()
+    .select({ startedAt: timeEntries.startedAt, minutes: timeEntries.minutes })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.projectId, projectId), isNotNull(timeEntries.endedAt)))
+    .orderBy(asc(timeEntries.startedAt));
+}

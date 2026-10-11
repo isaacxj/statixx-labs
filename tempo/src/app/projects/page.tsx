@@ -3,7 +3,8 @@ import { Archive, ArchiveRestore, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BILLING_LABELS, formatDuration, formatMoney } from "@/lib/format";
-import { listProjects } from "@/server/db/queries";
+import { BudgetBar } from "@/components/budget/budget-bar";
+import { getProjectUsedMinutes, listProjects } from "@/server/db/queries";
 import { archiveProject } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   const { show } = await searchParams;
   const showArchived = show === "archived";
-  const all = await listProjects();
+  const [all, used] = await Promise.all([listProjects(), getProjectUsedMinutes()]);
   const projects = all.filter((p) => (p.status === "archived") === showArchived);
   const tab = (active: boolean) => `rounded-input px-3 py-1.5 text-sm max-md:flex max-md:min-h-11 max-md:items-center ${active ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent"}`;
 
@@ -66,6 +67,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   </Button>
                 </form>
               </div>
+              <BudgetBar usedMinutes={used.get(p.id) ?? 0} budgetMinutes={p.budgetMinutes} className="sm:w-56" />
             </li>
           ))}
         </ul>
