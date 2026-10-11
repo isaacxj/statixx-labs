@@ -66,8 +66,11 @@ export async function getProject(id: number) {
       fixedFeeCents: projects.fixedFeeCents,
       color: projects.color,
       status: projects.status,
+      currency: businesses.currency,
     })
     .from(projects)
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .innerJoin(businesses, eq(clients.businessId, businesses.id))
     .where(eq(projects.id, id))
     .limit(1);
   return rows[0] ?? null;
@@ -314,11 +317,22 @@ export async function getProjectUsedMinutes(): Promise<Map<number, number>> {
   return new Map(rows.map((r) => [r.projectId, Number(r.minutes)]));
 }
 
-/** A project's finished entries, oldest first, for the burn chart. */
+/** A project's finished entries, oldest first, for the burn chart and profitability. */
 export async function listProjectEntries(projectId: number) {
   return getDb()
-    .select({ startedAt: timeEntries.startedAt, minutes: timeEntries.minutes })
+    .select({ startedAt: timeEntries.startedAt, minutes: timeEntries.minutes, billable: timeEntries.billable })
     .from(timeEntries)
     .where(and(eq(timeEntries.projectId, projectId), isNotNull(timeEntries.endedAt)))
     .orderBy(asc(timeEntries.startedAt));
+}
+
+/** Finished entries for every project, for profitability on the list. */
+export async function listAllProjectEntries() {
+  const rows = await getDb()
+    .select({ projectId: timeEntries.projectId, startedAt: timeEntries.startedAt, minutes: timeEntries.minutes, billable: timeEntries.billable })
+    .from(timeEntries)
+    .where(isNotNull(timeEntries.endedAt));
+  const byProject = new Map<number, typeof rows>();
+  for (const r of rows) byProject.set(r.projectId, [...(byProject.get(r.projectId) ?? []), r]);
+  return byProject;
 }

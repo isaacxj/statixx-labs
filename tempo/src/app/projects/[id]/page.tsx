@@ -4,6 +4,8 @@ import { ProjectForm } from "@/components/projects/project-form";
 import { BudgetBar } from "@/components/budget/budget-bar";
 import { BurnChart } from "@/components/budget/burn-chart";
 import { burnSeries } from "@/lib/budget";
+import { ProfitCard } from "@/components/budget/profit-card";
+import { profitability } from "@/lib/profit";
 import { localDay } from "@/lib/entries";
 import { getProject, listClients, listProjectEntries } from "@/server/db/queries";
 
@@ -17,6 +19,7 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
   if (!project) notFound();
   const [clients, entries] = await Promise.all([listClients(), listProjectEntries(project.id)]);
   const points = burnSeries(entries, localDay(new Date().toISOString()));
+  const profit = profitability(project, entries);
   const used = entries.reduce((sum, e) => sum + e.minutes, 0);
   const budget = project.budgetMinutes === null ? "" : `${Math.floor(project.budgetMinutes / 60)}:${String(project.budgetMinutes % 60).padStart(2, "0")}`;
   return (
@@ -45,6 +48,7 @@ export default async function EditProjectPage({ params }: { params: Promise<{ id
           <BudgetBar usedMinutes={used} budgetMinutes={project.budgetMinutes} />
         )}
       </section>
+      <ProfitCard billing={project.billing} currency={project.currency} profit={profit} />
       <ProjectForm
         id={project.id}
         clients={clients}

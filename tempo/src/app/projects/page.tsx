@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BILLING_LABELS, formatDuration, formatMoney } from "@/lib/format";
 import { BudgetBar } from "@/components/budget/budget-bar";
-import { getProjectUsedMinutes, listProjects } from "@/server/db/queries";
+import { profitability } from "@/lib/profit";
+import { getProjectUsedMinutes, listAllProjectEntries, listProjects } from "@/server/db/queries";
 import { archiveProject } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -12,12 +13,12 @@ export const dynamic = "force-dynamic";
 export default async function ProjectsPage({ searchParams }: { searchParams: Promise<{ show?: string }> }) {
   const { show } = await searchParams;
   const showArchived = show === "archived";
-  const [all, used] = await Promise.all([listProjects(), getProjectUsedMinutes()]);
+  const [all, used, entries] = await Promise.all([listProjects(), getProjectUsedMinutes(), listAllProjectEntries()]);
   const projects = all.filter((p) => (p.status === "archived") === showArchived);
   const tab = (active: boolean) => `rounded-input px-3 py-1.5 text-sm max-md:flex max-md:min-h-11 max-md:items-center ${active ? "bg-accent font-medium" : "text-muted-foreground hover:bg-accent"}`;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
         <Button asChild>
@@ -56,11 +57,16 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
               </Link>
               <div className="flex items-center gap-3">
                 <Badge variant="outline">{BILLING_LABELS[p.billing]}</Badge>
-                <span className="text-muted-foreground font-mono text-xs tabular-nums">
+                <span className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums">
                   {p.billing === "hourly" && formatMoney(p.rateCents, p.currency) + "/h"}
                   {p.billing === "fixed" && p.fixedFeeCents !== null && formatMoney(p.fixedFeeCents, p.currency)}
-                  {p.budgetMinutes !== null && `${p.billing === "hourly" || p.billing === "fixed" ? " · " : ""}${formatDuration(p.budgetMinutes)}h budget`}
+                  {p.billing === "retainer" && p.fixedFeeCents !== null && formatMoney(p.fixedFeeCents, p.currency) + "/mo"}
+                  {p.budgetMinutes !== null && `${p.billing === "hourly" || p.fixedFeeCents !== null ? " · " : ""}${formatDuration(p.budgetMinutes)}h budget`}
                 </span>
+                {(() => {
+                  const rate = profitability(p, entries.get(p.id) ?? []).effectiveRateCents;
+                  return rate === null ? null : <span className="text-foreground font-mono text-xs whitespace-nowrap tabular-nums">{formatMoney(rate, p.currency)}/h effective</span>;
+                })()}
                 <form action={archiveProject.bind(null, p.id, !showArchived)} className="ml-auto">
                   <Button variant="ghost" size="icon" type="submit" aria-label={showArchived ? `Restore ${p.name}` : `Archive ${p.name}`}>
                     {showArchived ? <ArchiveRestore /> : <Archive />}

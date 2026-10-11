@@ -46,7 +46,12 @@ describe("parseProjectForm", () => {
     });
   });
   it("ignores rate on non-hourly projects", () => {
-    const r = parseProjectForm(form({ ...base, billing: "retainer", rate: "99" }));
+    const r = parseProjectForm(form({ ...base, billing: "retainer", rate: "99", fixedFee: "900" }));
     expect(r.ok && r.data.rateCents).toBe(0);
+    expect(r.ok && r.data.fixedFeeCents).toBe(90000);
+  });
+  it("requires a monthly fee on retainers", () => {
+    const r = parseProjectForm(form({ ...base, billing: "retainer" }));
+    expect(!r.ok && r.errors.fixedFee).toBe("Enter the monthly fee, like 1500");
   });
 });

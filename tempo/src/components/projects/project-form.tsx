@@ -88,8 +88,8 @@ export function ProjectForm({
           <Input id="rate" name="rate" inputMode="decimal" defaultValue={defaults.rate} className="font-mono tabular-nums" />
         </Field>
       )}
-      {billing === "fixed" && (
-        <Field label="Fixed fee" htmlFor="fixedFee" error={e.fixedFee}>
+      {(billing === "fixed" || billing === "retainer") && (
+        <Field label={billing === "fixed" ? "Fixed fee" : "Monthly fee"} htmlFor="fixedFee" error={e.fixedFee}>
           <Input id="fixedFee" name="fixedFee" inputMode="decimal" defaultValue={defaults.fixedFee} className="font-mono tabular-nums" />
         </Field>
       )}

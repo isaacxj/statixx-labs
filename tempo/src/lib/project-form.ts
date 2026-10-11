@@ -49,9 +49,9 @@ export function parseProjectForm(form: FormData): ProjectParse {
   }
 
   let fixedFeeCents: number | null = null;
-  if (billing === "fixed") {
+  if (billing === "fixed" || billing === "retainer") {
     const f = parseCents(get("fixedFee"));
-    if (f === null) errors.fixedFee = "Enter the fixed fee, like 6000";
+    if (f === null) errors.fixedFee = billing === "fixed" ? "Enter the fixed fee, like 6000" : "Enter the monthly fee, like 1500";
     else fixedFeeCents = f;
   }
 
