@@ -36,18 +36,18 @@ export function BottomNav() {
   const pathname = usePathname();
   return (
     <nav aria-label="Main" className="bg-sidebar fixed inset-x-0 bottom-0 z-30 flex border-t md:hidden">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+      {NAV_ITEMS.filter((n) => !n.desktopOnly).map(({ href, label, icon: Icon }) => (
         <Link
           key={href}
           href={href}
           aria-current={isActive(pathname, href) ? "page" : undefined}
           className={cn(
-            "text-muted-foreground flex min-h-14 flex-1 flex-col items-center justify-center gap-1 text-xs",
+            "text-muted-foreground flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs",
             isActive(pathname, href) && "text-foreground font-medium",
           )}
         >
           <Icon className="size-4" />
-          {label}
+          <span className="max-w-full truncate">{label}</span>
         </Link>
       ))}
     </nav>

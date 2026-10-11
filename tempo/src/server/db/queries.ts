@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { centralToUtc, splitEntryTimes, type EntryInput } from "@/lib/entries";
 import { addDays, planCellEdit } from "@/lib/timesheet";
 import { defaultBillable, roundMinutes } from "@/lib/rounding";
@@ -354,4 +354,48 @@ export async function listReportEntries(from: string, to: string) {
     .innerJoin(clients, eq(projects.clientId, clients.id))
     .where(and(isNotNull(timeEntries.endedAt), gte(timeEntries.startedAt, from), lt(timeEntries.startedAt, to)))
     .orderBy(asc(timeEntries.startedAt));
+}
+
+/** Finished, billable, not-yet-billed entries from everyone, with client and rate, for the Unbilled page and export. */
+export async function listUnbilledEntries(clientId?: number) {
+  const conditions = [isNotNull(timeEntries.endedAt), isNull(timeEntries.billedAt), eq(timeEntries.billable, true)];
+  if (clientId !== undefined) conditions.push(eq(clients.id, clientId));
+  return getDb()
+    .select({
+      id: timeEntries.id,
+      startedAt: timeEntries.startedAt,
+      minutes: timeEntries.minutes,
+      description: timeEntries.description,
+      projectId: timeEntries.projectId,
+      projectName: projects.name,
+      billing: projects.billing,
+      rateCents: projects.rateCents,
+      clientId: clients.id,
+      clientName: clients.name,
+      currency: businesses.currency,
+    })
+    .from(timeEntries)
+    .innerJoin(projects, eq(timeEntries.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .innerJoin(businesses, eq(clients.businessId, businesses.id))
+    .where(and(...conditions))
+    .orderBy(asc(timeEntries.startedAt));
+}
+
+/** Marks a client's unbilled billable entries up to `upToId` as billed, so time logged after the page loaded stays unbilled. */
+export async function markClientBilled(clientId: number, ref: string, upToId: number, now = new Date()) {
+  const rows = await getDb()
+    .update(timeEntries)
+    .set({ billedAt: now.toISOString(), billedRef: ref, updatedAt: sql`(datetime('now'))` })
+    .where(
+      and(
+        isNotNull(timeEntries.endedAt),
+        isNull(timeEntries.billedAt),
+        eq(timeEntries.billable, true),
+        lte(timeEntries.id, upToId),
+        sql`${timeEntries.projectId} in (select ${projects.id} from ${projects} where ${projects.clientId} = ${clientId})`,
+      ),
+    )
+    .returning({ id: timeEntries.id });
+  return rows.length;
 }
