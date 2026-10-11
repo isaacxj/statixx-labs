@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { BottomNav, SidebarLinks } from "./nav-links";
+import { CommandPalette } from "./command-palette";
 import { IdleGuard } from "./idle-guard";
 import { TimerBar, type RunningTimer, type TimerProject } from "./timer-bar";
 
@@ -69,6 +70,7 @@ export function AppShell({
           <span className="text-lg font-semibold tracking-tight md:hidden">Tempo</span>
           <TimerBar projects={projects} running={running} />
           <div className="ml-auto flex items-center gap-1">
+            <CommandPalette projects={projects} running={running} />
             <ThemeToggle />
             <span
               title={email}
