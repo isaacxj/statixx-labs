@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate } from "@/lib/status";
 import { hasActiveClientUser, listClientsWithUsers, listProjectsForClientEmail, listProjectsWithClient } from "@/server/db/queries";
@@ -13,7 +14,9 @@ function ProjectList({ projects, showClient }: { projects: ProjectRow[]; showCli
       {projects.map((p) => (
         <li key={p.id} className="flex items-baseline justify-between gap-3 px-4 py-3">
           <span className="min-w-0">
-            <span className="font-medium">{p.name}</span>
+            <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
+              {p.name}
+            </Link>
             {showClient && <span className="text-muted-foreground"> · {p.clientName}</span>}
             {p.summary && <span className="text-muted-foreground block truncate text-xs">{p.summary}</span>}
           </span>

@@ -7,6 +7,7 @@ const timestamps = {
 };
 
 export const CLIENT_USER_ROLES = ["viewer", "approver"] as const;
+export type ClientUserRole = (typeof CLIENT_USER_ROLES)[number];
 export const PROJECT_STATUSES = ["on_track", "at_risk", "blocked", "done"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
