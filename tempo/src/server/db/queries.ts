@@ -2,9 +2,10 @@ import { and, asc, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzl
 import { centralToUtc, splitEntryTimes, type EntryInput } from "@/lib/entries";
 import { addDays, planCellEdit } from "@/lib/timesheet";
 import { defaultBillable, roundMinutes } from "@/lib/rounding";
+import { groupKey, groupProjects, rowTimes, type ImportRow } from "@/lib/import";
 import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
-import { businesses, clients, projects, timeEntries } from "./schema";
+import { businesses, clients, projects, timeEntries, type BillingType } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -433,4 +434,80 @@ export async function markClientBilled(clientId: number, ref: string, upToId: nu
     )
     .returning({ id: timeEntries.id });
   return rows.length;
+}
+
+export type ImportResult = { imported: number; duplicates: number; projectsCreated: number };
+
+/**
+ * Imports parsed Toggl or Clockify rows as the owner's finished entries. `mapping` sends each client/project group to an existing
+ * project id, or "new" to create an hourly project (and its client when missing). Rows whose owner, project, and start already
+ * exist are skipped, so importing the same file twice adds nothing. Entries are never rounded.
+ */
+export async function importEntries(ownerEmail: string, rows: ImportRow[], mapping: Record<string, number | "new">): Promise<ImportResult> {
+  const db = getDb();
+  const allBusinesses = await listBusinesses();
+  if (allBusinesses.length === 0) throw new Error("Create a business first");
+  const business = allBusinesses[0];
+  const knownProjects = new Map((await db.select({ id: projects.id, billing: projects.billing }).from(projects)).map((p) => [p.id, p.billing]));
+  const clientRows = await db.select({ id: clients.id, name: clients.name }).from(clients);
+  const targets = new Map<string, { id: number; billing: BillingType }>();
+  let projectsCreated = 0;
+
+  for (const g of groupProjects(rows)) {
+    const choice = mapping[g.key];
+    if (typeof choice === "number") {
+      const billing = knownProjects.get(choice);
+      if (!billing) throw new Error(`Unknown project for ${g.project}`);
+      targets.set(g.key, { id: choice, billing });
+      continue;
+    }
+    if (choice !== "new") throw new Error(`Choose a project for ${g.project}`);
+    const clientName = g.client || "Imported";
+    let clientId = clientRows.find((c) => c.name.trim().toLowerCase() === clientName.toLowerCase())?.id;
+    if (clientId === undefined) {
+      const [created] = await db.insert(clients).values({ businessId: business.id, name: clientName }).returning({ id: clients.id });
+      clientId = created.id;
+      clientRows.push({ id: clientId, name: clientName });
+    }
+    const [created] = await db
+      .insert(projects)
+      .values({ clientId, name: g.project, billing: "hourly", rateCents: business.defaultRateCents })
+      .returning({ id: projects.id });
+    projectsCreated++;
+    targets.set(g.key, { id: created.id, billing: "hourly" });
+  }
+
+  const seen = new Set<string>();
+  for (const t of new Set([...targets.values()].map((x) => x.id))) {
+    const existing = await db.select({ startedAt: timeEntries.startedAt }).from(timeEntries).where(and(eq(timeEntries.ownerEmail, ownerEmail), eq(timeEntries.projectId, t)));
+    for (const e of existing) seen.add(`${t}|${e.startedAt}`);
+  }
+
+  const values: (typeof timeEntries.$inferInsert)[] = [];
+  let duplicates = 0;
+  for (const r of rows) {
+    const target = targets.get(groupKey(r.client, r.project));
+    if (!target) continue;
+    const { startedAt, endedAt } = rowTimes(r);
+    const dupKey = `${target.id}|${startedAt}`;
+    if (seen.has(dupKey)) {
+      duplicates++;
+      continue;
+    }
+    seen.add(dupKey);
+    values.push({
+      projectId: target.id,
+      ownerEmail,
+      description: r.description,
+      startedAt,
+      endedAt,
+      minutes: r.minutes,
+      billable: r.billable && defaultBillable(target.billing),
+    });
+  }
+  // D1 caps bound variables at 100 per statement; 7 columns x 10 rows stays well under.
+  const inserts = [];
+  for (let i = 0; i < values.length; i += 10) inserts.push(db.insert(timeEntries).values(values.slice(i, i + 10)));
+  if (inserts.length > 0) await db.batch(inserts as [(typeof inserts)[number], ...(typeof inserts)[number][]]);
+  return { imported: values.length, duplicates, projectsCreated };
 }

@@ -1,4 +1,4 @@
-import { CalendarClock, BarChart3, CalendarDays, Clock, FolderKanban, Palette, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
+import { CalendarClock, BarChart3, CalendarDays, Clock, FolderKanban, Palette, Receipt, Settings, Upload, Users, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon; /** Left out of the phone bottom nav to keep it tappable. */ desktopOnly?: boolean };
 
@@ -11,6 +11,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/clients", label: "Clients", icon: Users },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/unbilled", label: "Unbilled", icon: Receipt },
+  { href: "/import", label: "Import", icon: Upload, desktopOnly: true },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/design", label: "Design", icon: Palette, desktopOnly: true },
 ];
