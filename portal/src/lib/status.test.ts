@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, STATUS_LABELS } from "./status";
+import { formatDate, STATUS_LABELS, STATUS_TONES } from "./status";
 
 describe("status helpers", () => {
   it("formats calendar days without timezone drift", () => {
@@ -8,5 +8,8 @@ describe("status helpers", () => {
   });
   it("labels every status", () => {
     expect(Object.values(STATUS_LABELS)).toEqual(["On track", "At risk", "Blocked", "Done"]);
+  });
+  it("gives every status a tone", () => {
+    expect(Object.keys(STATUS_TONES)).toEqual(Object.keys(STATUS_LABELS));
   });
 });

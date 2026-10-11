@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { clientUsers, clients, projects } from "./schema";
 
@@ -24,4 +24,31 @@ export async function listProjectsWithClient() {
     .from(projects)
     .innerJoin(clients, eq(projects.clientId, clients.id))
     .orderBy(asc(clients.name), asc(projects.name));
+}
+
+/** Projects the given client user may see: only their own client's, and only while their access is active. */
+export async function listProjectsForClientEmail(email: string) {
+  return getDb()
+    .select({
+      id: projects.id,
+      name: projects.name,
+      status: projects.status,
+      summary: projects.summary,
+      dueOn: projects.dueOn,
+      clientName: clients.name,
+    })
+    .from(clientUsers)
+    .innerJoin(clients, eq(clientUsers.clientId, clients.id))
+    .innerJoin(projects, eq(projects.clientId, clients.id))
+    .where(and(sql`lower(${clientUsers.email}) = ${email.trim().toLowerCase()}`, eq(clientUsers.active, true)))
+    .orderBy(asc(projects.name));
+}
+
+export async function hasActiveClientUser(email: string) {
+  const rows = await getDb()
+    .select({ id: clientUsers.id })
+    .from(clientUsers)
+    .where(and(sql`lower(${clientUsers.email}) = ${email.trim().toLowerCase()}`, eq(clientUsers.active, true)))
+    .limit(1);
+  return rows.length > 0;
 }

@@ -7,6 +7,13 @@ export const STATUS_LABELS: Record<ProjectStatus, string> = {
   done: "Done",
 };
 
+export const STATUS_TONES: Record<ProjectStatus, "success" | "warning" | "danger" | "neutral"> = {
+  on_track: "success",
+  at_risk: "warning",
+  blocked: "danger",
+  done: "neutral",
+};
+
 /** "2026-11-14" to "Nov 14, 2026", or an em dash when there is no date. */
 export function formatDate(day: string | null): string {
   if (!day) return "—";
