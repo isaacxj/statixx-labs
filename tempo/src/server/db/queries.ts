@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { splitEntryTimes, type EntryInput } from "@/lib/entries";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { centralToUtc, splitEntryTimes, type EntryInput } from "@/lib/entries";
+import { addDays, planCellEdit } from "@/lib/timesheet";
 import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
 import { businesses, clients, projects, timeEntries } from "./schema";
@@ -220,5 +221,66 @@ export async function splitEntry(ownerEmail: string, id: number, firstMinutes: n
       ...r.second,
     }),
   ]);
+  return null;
+}
+
+/** The owner's finished entries starting in [from, to), for the week timesheet. */
+export async function listEntriesInRange(ownerEmail: string, from: string, to: string) {
+  return getDb()
+    .select({ id: timeEntries.id, projectId: timeEntries.projectId, startedAt: timeEntries.startedAt, minutes: timeEntries.minutes })
+    .from(timeEntries)
+    .where(and(eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt), gte(timeEntries.startedAt, from), lt(timeEntries.startedAt, to)))
+    .orderBy(asc(timeEntries.startedAt));
+}
+
+/** Sets a project's total for one Central day, adjusting entries per `planCellEdit`. Returns an error message or null. */
+export async function setCellMinutes(ownerEmail: string, projectId: number, day: string, minutes: number): Promise<string | null> {
+  const db = getDb();
+  const [project] = await db.select({ billing: projects.billing }).from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return "Unknown project.";
+  const dayStart = centralToUtc(day, "00:00");
+  const dayEnd = centralToUtc(addDays(day, 1), "00:00");
+  const existing = await db
+    .select()
+    .from(timeEntries)
+    .where(
+      and(
+        eq(timeEntries.ownerEmail, ownerEmail),
+        eq(timeEntries.projectId, projectId),
+        isNotNull(timeEntries.endedAt),
+        gte(timeEntries.startedAt, dayStart),
+        lt(timeEntries.startedAt, dayEnd),
+      ),
+    );
+  const plan = planCellEdit(
+    existing.map((e) => ({ id: e.id, startedAt: e.startedAt, minutes: e.minutes, billed: e.billedAt !== null })),
+    minutes,
+  );
+  if (!plan.ok) return plan.error;
+  const byId = new Map(existing.map((e) => [e.id, e]));
+  const ops = [
+    ...plan.updates.map((u) => {
+      const en = byId.get(u.id)!;
+      const endedAt = new Date(new Date(en.startedAt).getTime() + u.minutes * 60000).toISOString();
+      return db.update(timeEntries).set({ minutes: u.minutes, endedAt, updatedAt: sql`(datetime('now'))` }).where(eq(timeEntries.id, u.id));
+    }),
+    ...plan.deletes.map((id) => db.delete(timeEntries).where(eq(timeEntries.id, id))),
+  ];
+  if (plan.create > 0) {
+    const startedAt = centralToUtc(day, "09:00");
+    const endedAt = new Date(new Date(startedAt).getTime() + plan.create * 60000).toISOString();
+    ops.push(
+      db.insert(timeEntries).values({
+        projectId,
+        ownerEmail,
+        description: "",
+        startedAt,
+        endedAt,
+        minutes: plan.create,
+        billable: project.billing !== "non_billable",
+      }) as never,
+    );
+  }
+  if (ops.length > 0) await db.batch(ops as [(typeof ops)[0], ...(typeof ops)[0][]]);
   return null;
 }
