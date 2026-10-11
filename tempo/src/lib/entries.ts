@@ -75,3 +75,16 @@ export function parseEntryForm(form: FormData): EntryParse {
   const endedAt = new Date(new Date(startedAt).getTime() + minutes * 60000).toISOString();
   return { ok: true, data: { projectId, description: String(form.get("description") ?? "").trim().slice(0, 200), startedAt, endedAt, minutes } };
 }
+
+/** Splits a finished entry after `firstMinutes`, returning both halves' times, or an error message. */
+export function splitEntryTimes(
+  startedAt: string,
+  minutes: number,
+  firstMinutes: number | null,
+): { ok: true; first: { endedAt: string; minutes: number }; second: { startedAt: string; endedAt: string; minutes: number } } | { ok: false; error: string } {
+  if (firstMinutes === null || firstMinutes <= 0) return { ok: false, error: "Enter the first part's length, like 1:00 or 0.5." };
+  if (firstMinutes >= minutes) return { ok: false, error: "The first part must be shorter than the entry." };
+  const mid = new Date(new Date(startedAt).getTime() + firstMinutes * 60000).toISOString();
+  const end = new Date(new Date(startedAt).getTime() + minutes * 60000).toISOString();
+  return { ok: true, first: { endedAt: mid, minutes: firstMinutes }, second: { startedAt: mid, endedAt: end, minutes: minutes - firstMinutes } };
+}

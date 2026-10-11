@@ -1,11 +1,9 @@
-import { Play, Trash2 } from "lucide-react";
 import { AddEntryForm } from "@/components/today/add-entry-form";
-import { Button } from "@/components/ui/button";
-import { dayLabel, groupByDay, localDay, localTime } from "@/lib/entries";
+import { EntryRow } from "@/components/today/entry-row";
+import { dayLabel, groupByDay, localDay } from "@/lib/entries";
 import { formatDuration } from "@/lib/format";
 import { listActiveProjectOptions, listEntries } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/user";
-import { deleteEntryAction, restartEntryAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,28 +34,7 @@ export default async function TodayPage() {
             </div>
             <ul className="bg-card rounded-card divide-border divide-y border">
               {g.entries.map((en) => (
-                <li key={en.id} className="flex items-center gap-3 px-4 py-3">
-                  <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: en.color }} />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium">{en.description || en.projectName}</span>
-                    <span className="text-muted-foreground truncate text-xs">
-                      {en.description && `${en.projectName} · `}
-                      {en.clientName} · {localTime(en.startedAt)}–{localTime(en.endedAt!)}
-                      {!en.billable && " · non-billable"}
-                    </span>
-                  </div>
-                  <span className="font-mono text-sm tabular-nums">{formatDuration(en.minutes)}</span>
-                  <form action={restartEntryAction.bind(null, en.id)}>
-                    <Button variant="ghost" size="icon" type="submit" aria-label={`Restart ${en.description || en.projectName}`}>
-                      <Play />
-                    </Button>
-                  </form>
-                  <form action={deleteEntryAction.bind(null, en.id)}>
-                    <Button variant="ghost" size="icon" type="submit" aria-label={`Delete ${en.description || en.projectName}`}>
-                      <Trash2 />
-                    </Button>
-                  </form>
-                </li>
+                <EntryRow key={en.id} entry={{ ...en, endedAt: en.endedAt! }} projects={projects} />
               ))}
             </ul>
           </section>

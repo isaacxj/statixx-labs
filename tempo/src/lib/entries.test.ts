@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { centralToUtc, dayLabel, groupByDay, localDay, parseEntryForm } from "./entries";
+import { centralToUtc, dayLabel, groupByDay, localDay, parseEntryForm, splitEntryTimes } from "./entries";
 
 const form = (o: Record<string, string>) => {
   const f = new FormData();
@@ -42,5 +42,22 @@ describe("parseEntryForm", () => {
     const r = parseEntryForm(form({ projectId: "", day: "", start: "9", duration: "0" }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["day", "duration", "projectId", "start"]);
+  });
+});
+
+describe("splitEntryTimes", () => {
+  const start = "2026-10-06T14:00:00.000Z";
+  it("splits into two contiguous parts that add up to the whole", () => {
+    const r = splitEntryTimes(start, 90, 60);
+    expect(r).toEqual({
+      ok: true,
+      first: { endedAt: "2026-10-06T15:00:00.000Z", minutes: 60 },
+      second: { startedAt: "2026-10-06T15:00:00.000Z", endedAt: "2026-10-06T15:30:00.000Z", minutes: 30 },
+    });
+  });
+  it("rejects a first part that is empty or not shorter than the entry", () => {
+    expect(splitEntryTimes(start, 90, 0).ok).toBe(false);
+    expect(splitEntryTimes(start, 90, 90).ok).toBe(false);
+    expect(splitEntryTimes(start, 90, null).ok).toBe(false);
   });
 });

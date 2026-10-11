@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import type { EntryInput } from "@/lib/entries";
+import { splitEntryTimes, type EntryInput } from "@/lib/entries";
 import { minutesBetween } from "@/lib/timer";
 import { getDb } from "./index";
 import { businesses, clients, projects, timeEntries } from "./schema";
@@ -157,6 +157,7 @@ export async function listEntries(ownerEmail: string, limit = 200) {
       endedAt: timeEntries.endedAt,
       minutes: timeEntries.minutes,
       billable: timeEntries.billable,
+      billedAt: timeEntries.billedAt,
     })
     .from(timeEntries)
     .innerJoin(projects, eq(timeEntries.projectId, projects.id))
@@ -188,4 +189,36 @@ export async function restartEntry(ownerEmail: string, id: number) {
     .limit(1);
   if (!entry) return;
   await startTimer(ownerEmail, entry.projectId, entry.description);
+}
+
+/** Updates one of the owner's finished, unbilled entries. */
+export async function updateEntry(ownerEmail: string, id: number, input: EntryInput) {
+  await getDb()
+    .update(timeEntries)
+    .set({ ...input, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(timeEntries.id, id), eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt), isNull(timeEntries.billedAt)));
+}
+
+/** Splits a finished, unbilled entry in two at `firstMinutes`, atomically. Returns an error message or null. */
+export async function splitEntry(ownerEmail: string, id: number, firstMinutes: number | null): Promise<string | null> {
+  const db = getDb();
+  const [en] = await db
+    .select()
+    .from(timeEntries)
+    .where(and(eq(timeEntries.id, id), eq(timeEntries.ownerEmail, ownerEmail), isNotNull(timeEntries.endedAt), isNull(timeEntries.billedAt)))
+    .limit(1);
+  if (!en) return "Entry not found.";
+  const r = splitEntryTimes(en.startedAt, en.minutes, firstMinutes);
+  if (!r.ok) return r.error;
+  await db.batch([
+    db.update(timeEntries).set({ ...r.first, updatedAt: sql`(datetime('now'))` }).where(eq(timeEntries.id, id)),
+    db.insert(timeEntries).values({
+      projectId: en.projectId,
+      ownerEmail,
+      description: en.description,
+      billable: en.billable,
+      ...r.second,
+    }),
+  ]);
+  return null;
 }
