@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
 import { BottomNav, SidebarLinks } from "./nav-links";
+import { IdleGuard } from "./idle-guard";
 import { TimerBar, type RunningTimer, type TimerProject } from "./timer-bar";
 
 export function AppShell({
@@ -78,6 +79,7 @@ export function AppShell({
             </span>
           </div>
         </header>
+        <IdleGuard running={running} />
         <main className="flex-1">{children}</main>
       </div>
       <BottomNav />

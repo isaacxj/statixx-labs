@@ -14,6 +14,10 @@ export async function updateBusinessRounding(id: number, roundingMinutes: number
   await getDb().update(businesses).set({ roundingMinutes, updatedAt: sql`(datetime('now'))` }).where(eq(businesses.id, id));
 }
 
+export async function updateBusinessIdleLimit(id: number, idleLimitMinutes: number) {
+  await getDb().update(businesses).set({ idleLimitMinutes, updatedAt: sql`(datetime('now'))` }).where(eq(businesses.id, id));
+}
+
 /** The rounding increment (0, 6, or 15) of the business a project's client belongs to. */
 export async function getRoundingForProject(projectId: number): Promise<number> {
   const rows = await getDb()
@@ -118,8 +122,12 @@ export async function getRunningEntry(ownerEmail: string) {
       projectId: timeEntries.projectId,
       description: timeEntries.description,
       startedAt: timeEntries.startedAt,
+      idleLimitMinutes: businesses.idleLimitMinutes,
     })
     .from(timeEntries)
+    .innerJoin(projects, eq(timeEntries.projectId, projects.id))
+    .innerJoin(clients, eq(projects.clientId, clients.id))
+    .innerJoin(businesses, eq(clients.businessId, businesses.id))
     .where(and(eq(timeEntries.ownerEmail, ownerEmail), isNull(timeEntries.endedAt)))
     .limit(1);
   return rows[0] ?? null;
@@ -136,6 +144,23 @@ export async function stopTimer(ownerEmail: string, now = new Date()) {
     .set({ endedAt, minutes: roundMinutes(minutesBetween(running.startedAt, endedAt), rounding), updatedAt: sql`(datetime('now'))` })
     .where(and(eq(timeEntries.id, running.id), isNull(timeEntries.endedAt)));
   return running.id;
+}
+
+/** Stops a forgotten timer after `keepMinutes` (rounded like any stop), or throws it away when `keepMinutes` is null. */
+export async function resolveIdleTimer(ownerEmail: string, entryId: number, keepMinutes: number | null) {
+  const db = getDb();
+  const running = await getRunningEntry(ownerEmail);
+  if (!running || running.id !== entryId) return;
+  if (keepMinutes === null) {
+    await db.delete(timeEntries).where(and(eq(timeEntries.id, entryId), isNull(timeEntries.endedAt)));
+    return;
+  }
+  const endedAt = new Date(new Date(running.startedAt).getTime() + keepMinutes * 60000).toISOString();
+  const rounding = await getRoundingForProject(running.projectId);
+  await db
+    .update(timeEntries)
+    .set({ endedAt, minutes: roundMinutes(keepMinutes, rounding), updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(timeEntries.id, entryId), isNull(timeEntries.endedAt)));
 }
 
 /** Starts a timer, stopping any running one first, in one atomic batch. */

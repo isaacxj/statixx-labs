@@ -8,7 +8,7 @@ import { Input, Select } from "@/components/ui/input";
 import { elapsedSeconds, formatClock } from "@/lib/timer";
 
 export type TimerProject = { id: number; name: string; clientName: string; color: string };
-export type RunningTimer = { id: number; projectId: number; description: string; startedAt: string };
+export type RunningTimer = { id: number; projectId: number; description: string; startedAt: string; idleLimitMinutes: number };
 
 export function TimerBar({ projects, running }: { projects: TimerProject[]; running: RunningTimer | null }) {
   const [projectId, setProjectId] = useState<string>("");
