@@ -2,8 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { parseMilestoneInput, todayInChicago } from "@/lib/milestones";
 import { parseProjectInput } from "@/lib/projects";
-import { insertProject, updateProject } from "@/server/db/queries";
+import { deleteMilestone, insertMilestone, insertProject, setMilestoneDone, updateProject } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 
 async function requireTeam() {
@@ -32,4 +33,30 @@ export async function updateProjectAction(projectId: number, form: FormData) {
   revalidatePath("/");
   revalidatePath(path);
   return back(path, "saved", "Project updated");
+}
+
+export async function addMilestoneAction(projectId: number, form: FormData) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  const parsed = parseMilestoneInput(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  await insertMilestone(projectId, parsed.value);
+  revalidatePath(path);
+  return back(path, "saved", "Milestone added");
+}
+
+export async function toggleMilestoneAction(projectId: number, milestoneId: number, done: boolean) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  await setMilestoneDone(projectId, milestoneId, done ? todayInChicago() : null);
+  revalidatePath(path);
+  return back(path, "saved", done ? "Milestone completed" : "Milestone reopened");
+}
+
+export async function deleteMilestoneAction(projectId: number, milestoneId: number) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  await deleteMilestone(projectId, milestoneId);
+  revalidatePath(path);
+  return back(path, "saved", "Milestone removed");
 }

@@ -1,8 +1,9 @@
 import { and, asc, eq, sql } from "drizzle-orm";
+import { sortMilestones, type MilestoneInput } from "@/lib/milestones";
 import { canSeeClient, type CurrentUser } from "@/lib/access";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { clientUsers, clients, projects, type ClientUserRole } from "./schema";
+import { clientUsers, clients, milestones, projects, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -129,4 +130,34 @@ export async function updateProject(projectId: number, input: ProjectInput) {
     .update(projects)
     .set({ ...input, updatedAt: sql`(datetime('now'))` })
     .where(eq(projects.id, projectId));
+}
+
+/** Milestones of one project, in timeline order, only if the user may see its client; empty otherwise. */
+export async function listMilestonesForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  const rows = await getDb().select().from(milestones).where(eq(milestones.projectId, projectId));
+  return sortMilestones(rows);
+}
+
+/** Team-only write; callers check the role. */
+export async function insertMilestone(projectId: number, input: MilestoneInput) {
+  const db = getDb();
+  const [{ next }] = await db
+    .select({ next: sql<number>`coalesce(max(${milestones.position}), -1) + 1` })
+    .from(milestones)
+    .where(eq(milestones.projectId, projectId));
+  await db.insert(milestones).values({ projectId, ...input, position: next });
+}
+
+/** Team-only: sets or clears the done day; scoped to the project so an id from another project is ignored. */
+export async function setMilestoneDone(projectId: number, milestoneId: number, doneOn: string | null) {
+  await getDb()
+    .update(milestones)
+    .set({ doneOn, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)));
+}
+
+export async function deleteMilestone(projectId: number, milestoneId: number) {
+  await getDb().delete(milestones).where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)));
 }

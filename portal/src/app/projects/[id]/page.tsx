@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { MilestoneTimeline } from "@/components/milestone-timeline";
 import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { todayInChicago } from "@/lib/milestones";
 import { STATUS_LABELS, formatDate } from "@/lib/status";
 import { PROJECT_STATUSES } from "@/server/db/schema";
-import { getProjectForUser } from "@/server/db/queries";
+import { getProjectForUser, listMilestonesForUser } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 import { updateProjectAction } from "../actions";
 
@@ -26,6 +28,7 @@ export default async function ProjectPage({
   const user = await getCurrentUser();
   const project = await getProjectForUser(user, projectId);
   if (!project) notFound();
+  const milestones = await listMilestonesForUser(user, project.id);
   return (
     <div className="flex flex-col gap-6">
       <Link href="/" className="text-muted-foreground hover:text-foreground text-sm">
@@ -49,6 +52,7 @@ export default async function ProjectPage({
           <dd className="font-mono tabular-nums">{formatDate(project.dueOn)}</dd>
         </div>
       </dl>
+      <MilestoneTimeline projectId={project.id} items={milestones} today={todayInChicago()} canEdit={user.kind === "team"} />
       {user.kind === "team" && (
         <form action={updateProjectAction.bind(null, project.id)} className="bg-card grid gap-3 rounded-md border p-4 sm:grid-cols-2">
           <h2 className="text-base font-semibold sm:col-span-2">Edit project</h2>

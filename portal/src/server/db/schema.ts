@@ -44,3 +44,15 @@ export const projects = sqliteTable("projects", {
   dueOn: text("due_on"),
   ...timestamps,
 });
+
+export const milestones = sqliteTable("milestones", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  title: text("title").notNull(),
+  dueOn: text("due_on"),
+  doneOn: text("done_on"),
+  position: integer("position").notNull().default(0),
+  ...timestamps,
+});
+
+export type Milestone = typeof milestones.$inferSelect;
