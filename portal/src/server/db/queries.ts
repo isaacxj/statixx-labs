@@ -387,3 +387,15 @@ export async function getTeamOverviewData() {
   for (const r of requestRows) activity.push({ clientId: clientOf.get(r.projectId) ?? -1, at: r.updatedAt });
   return { projects: projectRows, approvals: approvalRows.filter((a) => a.status === "pending"), requests: requestRows, activity };
 }
+
+/** Team-wide rows the morning digest filters: projects with client names, requests, approvals, and milestones. */
+export async function getDigestData() {
+  const db = getDb();
+  const [projectRows, requestRows, approvalRows, milestoneRows] = await Promise.all([
+    db.select({ id: projects.id, name: projects.name, clientName: clients.name }).from(projects).innerJoin(clients, eq(clients.id, projects.clientId)),
+    db.select({ id: requests.id, projectId: requests.projectId, title: requests.title, authorEmail: requests.authorEmail, status: requests.status, createdAt: requests.createdAt }).from(requests),
+    db.select({ id: approvals.id, projectId: approvals.projectId, title: approvals.title, status: approvals.status, decidedBy: approvals.decidedBy, decidedAt: approvals.decidedAt }).from(approvals),
+    db.select({ id: milestones.id, projectId: milestones.projectId, title: milestones.title, dueOn: milestones.dueOn, doneOn: milestones.doneOn }).from(milestones),
+  ]);
+  return { projects: projectRows, requests: requestRows, approvals: approvalRows, milestones: milestoneRows };
+}
