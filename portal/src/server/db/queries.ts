@@ -5,7 +5,7 @@ import type { ApprovalDecision, ApprovalInput } from "@/lib/approvals";
 import type { RequestInput } from "@/lib/requests";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { approvals, clientUsers, clients, files, milestones, projects, requests, updates, type ClientUserRole, type RequestStatus } from "./schema";
+import { approvals, clientUsers, clients, comments, files, milestones, projects, requests, updates, type ClientUserRole, type CommentParentType, type RequestStatus } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -272,7 +272,11 @@ export async function insertApproval(projectId: number, input: ApprovalInput) {
 
 /** Team-only; scoped to the project. */
 export async function deleteApproval(projectId: number, approvalId: number) {
-  await getDb().delete(approvals).where(and(eq(approvals.id, approvalId), eq(approvals.projectId, projectId)));
+  const db = getDb();
+  await db.batch([
+    db.delete(comments).where(and(eq(comments.parentType, "approval"), eq(comments.parentId, approvalId), sql`exists (select 1 from approvals where approvals.id = ${approvalId} and approvals.project_id = ${projectId})`)),
+    db.delete(approvals).where(and(eq(approvals.id, approvalId), eq(approvals.projectId, projectId))),
+  ]);
 }
 
 /**
@@ -315,4 +319,31 @@ export async function setRequestStatus(projectId: number, requestId: number, sta
     .update(requests)
     .set({ status, updatedAt: sql`(datetime('now'))` })
     .where(and(eq(requests.id, requestId), eq(requests.projectId, projectId)));
+}
+
+/** Comments on the approvals and requests of one project; empty unless the user may see the project. */
+export async function listCommentsForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  const db = getDb();
+  const [onApprovals, onRequests] = await Promise.all([
+    db.select({ comment: comments }).from(comments).innerJoin(approvals, and(eq(comments.parentType, "approval"), eq(comments.parentId, approvals.id))).where(eq(approvals.projectId, projectId)),
+    db.select({ comment: comments }).from(comments).innerJoin(requests, and(eq(comments.parentType, "request"), eq(comments.parentId, requests.id))).where(eq(requests.projectId, projectId)),
+  ]);
+  return [...onApprovals, ...onRequests].map((r) => r.comment);
+}
+
+/**
+ * The team or a client user comments on an approval or request of a project they can see.
+ * Returns false when the user may not, or the parent isn't in that project.
+ */
+export async function insertComment(user: CurrentUser, projectId: number, parentType: CommentParentType, parentId: number, bodyMd: string) {
+  if (user.kind === "none") return false;
+  if (!(await getProjectForUser(user, projectId))) return false;
+  const db = getDb();
+  const table = parentType === "approval" ? approvals : requests;
+  const parent = await db.select({ id: table.id }).from(table).where(and(eq(table.id, parentId), eq(table.projectId, projectId))).limit(1);
+  if (!parent[0]) return false;
+  await db.insert(comments).values({ parentType, parentId, authorEmail: user.email, bodyMd });
+  return true;
 }

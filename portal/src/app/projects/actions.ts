@@ -7,9 +7,10 @@ import { parseProjectInput } from "@/lib/projects";
 import { parseAttachments, parseFileUpload, safeFileName } from "@/lib/files";
 import { parseApprovalDecision, parseApprovalInput } from "@/lib/approvals";
 import { parseUpdateInput } from "@/lib/updates";
+import { parseCommentInput, parseCommentParentType } from "@/lib/comments";
 import { parseRequestInput, parseRequestStatus } from "@/lib/requests";
 import { env } from "cloudflare:workers";
-import { decideApproval, deleteApproval, deleteFile, deleteMilestone, deleteUpdate, insertApproval, insertFile, insertMilestone, insertProject, insertRequest, insertUpdate, setMilestoneDone, setRequestStatus, updateProject } from "@/server/db/queries";
+import { decideApproval, insertComment, deleteApproval, deleteFile, deleteMilestone, deleteUpdate, insertApproval, insertFile, insertMilestone, insertProject, insertRequest, insertUpdate, setMilestoneDone, setRequestStatus, updateProject } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 
 async function requireTeam() {
@@ -172,4 +173,17 @@ export async function setRequestStatusAction(projectId: number, requestId: numbe
   await setRequestStatus(projectId, requestId, parsed.value);
   revalidatePath(path);
   return back(path, "saved", "Request updated");
+}
+
+export async function addCommentAction(projectId: number, parentType: string, parentId: number, form: FormData) {
+  const user = await getCurrentUser();
+  const path = `/projects/${projectId}`;
+  const type = parseCommentParentType(parentType);
+  if (!type.ok) return back(path, "error", type.error);
+  const parsed = parseCommentInput(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  const done = await insertComment(user, projectId, type.value, parentId, parsed.value);
+  if (!done) return back(path, "error", "You can't comment here.");
+  revalidatePath(path);
+  return back(path, "saved", "Comment sent");
 }

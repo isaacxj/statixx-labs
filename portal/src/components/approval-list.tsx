@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { APPROVAL_LABELS, APPROVAL_TITLE_MAX, APPROVAL_TONES } from "@/lib/approvals";
+import { commentKey } from "@/lib/comments";
 import { formatPostedAt } from "@/lib/updates";
-import type { Approval, ProjectFile } from "@/server/db/schema";
+import { CommentThread } from "@/components/comment-thread";
+import type { Approval, Comment, ProjectFile } from "@/server/db/schema";
 import { decideApprovalAction, deleteApprovalAction, requestApprovalAction } from "@/app/projects/actions";
 
 type Item = Approval & { fileName: string | null };
@@ -15,7 +17,7 @@ type Item = Approval & { fileName: string | null };
  * Approvals on a project. Team requests and removes them; approvers decide pending ones;
  * viewers and the team see the state read-only.
  */
-export function ApprovalList({ projectId, items, files, isTeam, canDecide }: { projectId: number; items: Item[]; files: ProjectFile[]; isTeam: boolean; canDecide: boolean }) {
+export function ApprovalList({ projectId, items, files, comments, teamEmails, isTeam, canDecide }: { projectId: number; items: Item[]; files: ProjectFile[]; comments: Map<string, Comment[]>; teamEmails: string[]; isTeam: boolean; canDecide: boolean }) {
   return (
     <section className="flex flex-col gap-3" aria-labelledby="approvals-heading">
       <h2 id="approvals-heading" className="text-base font-semibold">Approvals</h2>
@@ -114,6 +116,7 @@ export function ApprovalList({ projectId, items, files, isTeam, canDecide }: { p
               {a.status === "pending" && !isTeam && !canDecide && (
                 <p className="text-muted-foreground border-t pt-3 text-xs">Only approvers on your team can decide this.</p>
               )}
+              <CommentThread projectId={projectId} parentType="approval" parentId={a.id} items={comments.get(commentKey("approval", a.id)) ?? []} teamEmails={teamEmails} />
             </li>
           ))}
         </ul>

@@ -8,14 +8,16 @@ import { FileTypeIcon } from "@/components/file-list";
 import { MAX_ATTACHMENTS, formatFileSize } from "@/lib/files";
 import { REQUEST_LABELS, REQUEST_TITLE_MAX, REQUEST_TONES } from "@/lib/requests";
 import { formatPostedAt } from "@/lib/updates";
-import { REQUEST_STATUSES, type ClientRequest, type ProjectFile } from "@/server/db/schema";
+import { CommentThread } from "@/components/comment-thread";
+import { commentKey } from "@/lib/comments";
+import { REQUEST_STATUSES, type ClientRequest, type Comment, type ProjectFile } from "@/server/db/schema";
 import { setRequestStatusAction, submitRequestAction } from "@/app/projects/actions";
 
 /**
  * Requests on a project. Client users send them (with attachments) and follow the status;
  * the team moves them between open, in progress and done.
  */
-export function RequestList({ projectId, items, attachments, isTeam, canSubmit }: { projectId: number; items: ClientRequest[]; attachments: Map<number, ProjectFile[]>; isTeam: boolean; canSubmit: boolean }) {
+export function RequestList({ projectId, items, attachments, comments, teamEmails, isTeam, canSubmit }: { projectId: number; items: ClientRequest[]; attachments: Map<number, ProjectFile[]>; comments: Map<string, Comment[]>; teamEmails: string[]; isTeam: boolean; canSubmit: boolean }) {
   return (
     <section className="flex flex-col gap-3" aria-labelledby="requests-heading">
       <h2 id="requests-heading" className="text-base font-semibold">Requests</h2>
@@ -87,6 +89,7 @@ export function RequestList({ projectId, items, attachments, isTeam, canSubmit }
                   ))}
                 </ul>
               )}
+              <CommentThread projectId={projectId} parentType="request" parentId={r.id} items={comments.get(commentKey("request", r.id)) ?? []} teamEmails={teamEmails} />
               {isTeam && (
                 <form action={setRequestStatusAction.bind(null, projectId, r.id)} className="flex items-end gap-2 border-t pt-3">
                   <label className="flex flex-col gap-1 text-sm">

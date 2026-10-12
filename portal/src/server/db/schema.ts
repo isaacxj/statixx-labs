@@ -114,3 +114,17 @@ export const requests = sqliteTable("requests", {
 });
 
 export type ClientRequest = typeof requests.$inferSelect;
+
+export const COMMENT_PARENT_TYPES = ["approval", "request"] as const;
+export type CommentParentType = (typeof COMMENT_PARENT_TYPES)[number];
+
+export const comments = sqliteTable("comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  parentType: text("parent_type", { enum: COMMENT_PARENT_TYPES }).notNull(),
+  parentId: integer("parent_id").notNull(),
+  authorEmail: text("author_email").notNull(),
+  bodyMd: text("body_md").notNull(),
+  ...timestamps,
+});
+
+export type Comment = typeof comments.$inferSelect;

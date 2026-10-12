@@ -43,6 +43,13 @@
       "when": 1791823064112,
       "tag": "0005_smart_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791826678553,
+      "tag": "0006_legal_firedrake",
+      "breakpoints": true
     }
   ]
 }
