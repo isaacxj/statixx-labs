@@ -1,4 +1,6 @@
 import { BottomNav, CLIENT_NAV, SidebarNav, TEAM_NAV } from "./nav";
+import { CommandPalette } from "@/components/command-palette";
+import type { PaletteItem } from "@/lib/palette";
 import { ThemeToggle } from "./theme-toggle";
 
 export type ShellVariant = "team" | "client";
@@ -17,12 +19,14 @@ export function AppShell({
   title,
   initials,
   brand,
+  palette,
   children,
 }: {
   variant: ShellVariant;
   title: string;
   initials: string;
   brand?: Brand;
+  palette?: PaletteItem[];
   children: React.ReactNode;
 }) {
   const items = variant === "team" ? TEAM_NAV : CLIENT_NAV;
@@ -44,6 +48,7 @@ export function AppShell({
           </span>
           <span className="text-muted-foreground hidden text-sm md:block">{variant === "team" ? "Team" : "Client portal"}</span>
           <div className="flex items-center gap-1">
+            {palette && <CommandPalette items={palette} />}
             <ThemeToggle />
             <span
               aria-label="Signed in user"
