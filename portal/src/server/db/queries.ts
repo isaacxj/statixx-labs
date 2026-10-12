@@ -47,6 +47,29 @@ export async function listProjectsForClientEmail(email: string) {
     .orderBy(asc(projects.name));
 }
 
+/** Milestones across the projects an active client user may see; empty for anyone else. */
+export async function listMilestonesForClientEmail(email: string) {
+  return getDb()
+    .select({ milestone: milestones })
+    .from(clientUsers)
+    .innerJoin(projects, eq(projects.clientId, clientUsers.clientId))
+    .innerJoin(milestones, eq(milestones.projectId, projects.id))
+    .where(and(sql`lower(${clientUsers.email}) = ${email.trim().toLowerCase()}`, eq(clientUsers.active, true)))
+    .then((rows) => rows.map((r) => r.milestone));
+}
+
+/** Newest updates across the projects an active client user may see; empty for anyone else. */
+export async function listLatestUpdatesForClientEmail(email: string, limit: number) {
+  return getDb()
+    .select({ id: updates.id, projectId: projects.id, projectName: projects.name, bodyMd: updates.bodyMd, createdAt: updates.createdAt })
+    .from(clientUsers)
+    .innerJoin(projects, eq(projects.clientId, clientUsers.clientId))
+    .innerJoin(updates, eq(updates.projectId, projects.id))
+    .where(and(sql`lower(${clientUsers.email}) = ${email.trim().toLowerCase()}`, eq(clientUsers.active, true)))
+    .orderBy(desc(updates.createdAt), desc(updates.id))
+    .limit(limit);
+}
+
 export async function hasActiveClientUser(email: string) {
   const rows = await getDb()
     .select({ id: clientUsers.id })

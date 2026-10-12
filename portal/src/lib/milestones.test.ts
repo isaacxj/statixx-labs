@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { milestoneProgress, milestoneState, parseMilestoneInput, sortMilestones, todayInChicago } from "./milestones";
+import { milestoneProgress, nextMilestone, milestoneState, parseMilestoneInput, sortMilestones, todayInChicago } from "./milestones";
 
 const form = (o: Record<string, string>) => {
   const f = new FormData();
@@ -43,5 +43,20 @@ describe("sortMilestones and progress", () => {
   });
   it("reads the Chicago date", () => {
     expect(todayInChicago(new Date("2026-10-12T03:00:00Z"))).toBe("2026-10-11");
+  });
+});
+
+describe("nextMilestone", () => {
+  it("is the first open milestone in timeline order", () => {
+    const rows = [
+      { id: 1, position: 0, dueOn: "2026-10-01", doneOn: "2026-10-01" },
+      { id: 3, position: 2, dueOn: null, doneOn: null },
+      { id: 2, position: 1, dueOn: "2026-11-01", doneOn: null },
+    ];
+    expect(nextMilestone(rows)?.id).toBe(2);
+  });
+  it("is null when everything is done or there is nothing", () => {
+    expect(nextMilestone([{ id: 1, position: 0, dueOn: null, doneOn: "2026-10-01" }])).toBeNull();
+    expect(nextMilestone([])).toBeNull();
   });
 });

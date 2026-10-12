@@ -30,6 +30,11 @@ export function milestoneProgress(items: Pick<Milestone, "doneOn">[]): { done: n
   return { done: items.filter((m) => m.doneOn).length, total: items.length };
 }
 
+/** The first milestone not yet done, in timeline order, or null when all are done or there are none. */
+export function nextMilestone<T extends Pick<Milestone, "id" | "position" | "dueOn" | "doneOn">>(items: T[]): T | null {
+  return sortMilestones(items).find((m) => !m.doneOn) ?? null;
+}
+
 /** Today in the team's zone, as "YYYY-MM-DD". */
 export function todayInChicago(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago" }).format(now);
