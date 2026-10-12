@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { parseMilestoneInput, todayInChicago } from "@/lib/milestones";
 import { parseProjectInput } from "@/lib/projects";
 import { parseAttachments, parseFileUpload, safeFileName } from "@/lib/files";
+import { parseApprovalDecision, parseApprovalInput } from "@/lib/approvals";
 import { parseUpdateInput } from "@/lib/updates";
 import { env } from "cloudflare:workers";
-import { deleteFile, deleteMilestone, deleteUpdate, insertFile, insertMilestone, insertProject, insertUpdate, setMilestoneDone, updateProject } from "@/server/db/queries";
+import { decideApproval, deleteApproval, deleteFile, deleteMilestone, deleteUpdate, insertApproval, insertFile, insertMilestone, insertProject, insertUpdate, setMilestoneDone, updateProject } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 
 async function requireTeam() {
@@ -112,4 +113,33 @@ export async function deleteFileAction(projectId: number, fileId: number) {
   if (key) await env.FILES.delete(key);
   revalidatePath(path);
   return back(path, "saved", "File removed");
+}
+
+export async function requestApprovalAction(projectId: number, form: FormData) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  const parsed = parseApprovalInput(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  await insertApproval(projectId, parsed.value);
+  revalidatePath(path);
+  return back(path, "saved", "Approval requested");
+}
+
+export async function deleteApprovalAction(projectId: number, approvalId: number) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  await deleteApproval(projectId, approvalId);
+  revalidatePath(path);
+  return back(path, "saved", "Approval removed");
+}
+
+export async function decideApprovalAction(projectId: number, approvalId: number, form: FormData) {
+  const user = await getCurrentUser();
+  const path = `/projects/${projectId}`;
+  const parsed = parseApprovalDecision(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  const done = await decideApproval(user, projectId, approvalId, parsed.value);
+  if (!done) return back(path, "error", "This approval can't be decided by you, or it was already decided.");
+  revalidatePath(path);
+  return back(path, "saved", parsed.value.status === "approved" ? "Approved" : "Changes requested");
 }

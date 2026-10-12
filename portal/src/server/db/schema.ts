@@ -81,3 +81,21 @@ export const files = sqliteTable("files", {
 });
 
 export type ProjectFile = typeof files.$inferSelect;
+
+export const APPROVAL_STATUSES = ["pending", "approved", "changes_requested"] as const;
+export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
+
+export const approvals = sqliteTable("approvals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  title: text("title").notNull(),
+  descriptionMd: text("description_md").notNull().default(""),
+  fileId: integer("file_id").references(() => files.id),
+  status: text("status", { enum: APPROVAL_STATUSES }).notNull().default("pending"),
+  decidedBy: text("decided_by"),
+  decidedAt: text("decided_at"),
+  comment: text("comment").notNull().default(""),
+  ...timestamps,
+});
+
+export type Approval = typeof approvals.$inferSelect;

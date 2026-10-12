@@ -29,6 +29,13 @@
       "when": 1791812324673,
       "tag": "0003_same_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791819462541,
+      "tag": "0004_acoustic_chronomancer",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { sortMilestones, type MilestoneInput } from "@/lib/milestones";
-import { canSeeClient, type CurrentUser } from "@/lib/access";
+import { canDecideApproval, canSeeClient, type CurrentUser } from "@/lib/access";
+import type { ApprovalDecision, ApprovalInput } from "@/lib/approvals";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { clientUsers, clients, files, milestones, projects, updates, type ClientUserRole } from "./schema";
+import { approvals, clientUsers, clients, files, milestones, projects, updates, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -205,6 +206,7 @@ export async function deleteUpdate(projectId: number, updateId: number) {
   if (!owned[0]) return [];
   const attached = await db.select({ r2Key: files.r2Key }).from(files).where(and(eq(files.updateId, updateId), eq(files.projectId, projectId)));
   await db.batch([
+    db.update(approvals).set({ fileId: null }).where(sql`${approvals.fileId} in (select ${files.id} from ${files} where ${files.updateId} = ${updateId})`),
     db.delete(files).where(and(eq(files.updateId, updateId), eq(files.projectId, projectId))),
     db.delete(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId))),
   ]);
@@ -233,9 +235,56 @@ export async function insertFile(input: { projectId: number; updateId?: number; 
 
 /** Team-only; scoped to the project. Returns the R2 key to delete, or null when nothing matched. */
 export async function deleteFile(projectId: number, fileId: number) {
-  const rows = await getDb()
-    .delete(files)
-    .where(and(eq(files.id, fileId), eq(files.projectId, projectId)))
-    .returning({ r2Key: files.r2Key });
+  const db = getDb();
+  const [, rows] = await db.batch([
+    db.update(approvals).set({ fileId: null }).where(and(eq(approvals.fileId, fileId), eq(approvals.projectId, projectId))),
+    db.delete(files).where(and(eq(files.id, fileId), eq(files.projectId, projectId))).returning({ r2Key: files.r2Key }),
+  ]);
   return rows[0]?.r2Key ?? null;
+}
+
+/** Approvals of one project, pending first then newest, with the attached file's name; empty unless the user may see the project. */
+export async function listApprovalsForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  const rows = await getDb()
+    .select({ approval: approvals, fileName: files.name })
+    .from(approvals)
+    .leftJoin(files, eq(approvals.fileId, files.id))
+    .where(eq(approvals.projectId, projectId))
+    .orderBy(desc(approvals.createdAt), desc(approvals.id));
+  return rows
+    .map((r) => ({ ...r.approval, fileName: r.fileName }))
+    .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending"));
+}
+
+/** Team-only write; callers check the role. The file, if any, must belong to the same project. */
+export async function insertApproval(projectId: number, input: ApprovalInput) {
+  const db = getDb();
+  let fileId = input.fileId;
+  if (fileId !== null) {
+    const owned = await db.select({ id: files.id }).from(files).where(and(eq(files.id, fileId), eq(files.projectId, projectId))).limit(1);
+    if (!owned[0]) fileId = null;
+  }
+  await db.insert(approvals).values({ projectId, title: input.title, descriptionMd: input.descriptionMd, fileId });
+}
+
+/** Team-only; scoped to the project. */
+export async function deleteApproval(projectId: number, approvalId: number) {
+  await getDb().delete(approvals).where(and(eq(approvals.id, approvalId), eq(approvals.projectId, projectId)));
+}
+
+/**
+ * An approver records a decision on a pending approval in their own client's project.
+ * Returns false when the user can't decide, can't see the project, or it was already decided.
+ */
+export async function decideApproval(user: CurrentUser, projectId: number, approvalId: number, decision: ApprovalDecision) {
+  if (!canDecideApproval(user)) return false;
+  if (!(await getProjectForUser(user, projectId))) return false;
+  const rows = await getDb()
+    .update(approvals)
+    .set({ status: decision.status, comment: decision.comment, decidedBy: user.email, decidedAt: sql`datetime('now')`, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(approvals.id, approvalId), eq(approvals.projectId, projectId), eq(approvals.status, "pending")))
+    .returning({ id: approvals.id });
+  return rows.length > 0;
 }

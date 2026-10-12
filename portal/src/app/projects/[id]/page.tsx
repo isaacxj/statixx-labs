@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { groupByUpdate } from "@/lib/files";
+import { ApprovalList } from "@/components/approval-list";
+import { canDecideApproval } from "@/lib/access";
 import { FileList } from "@/components/file-list";
 import { MilestoneTimeline } from "@/components/milestone-timeline";
 import { Notice } from "@/components/notice";
@@ -12,7 +14,7 @@ import { Select } from "@/components/ui/select";
 import { todayInChicago } from "@/lib/milestones";
 import { STATUS_LABELS, formatDate } from "@/lib/status";
 import { PROJECT_STATUSES } from "@/server/db/schema";
-import { getProjectForUser, listFilesForUser, listMilestonesForUser, listUpdatesForUser } from "@/server/db/queries";
+import { getProjectForUser, listApprovalsForUser, listFilesForUser, listMilestonesForUser, listUpdatesForUser } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 import { updateProjectAction } from "../actions";
 
@@ -31,10 +33,11 @@ export default async function ProjectPage({
   const user = await getCurrentUser();
   const project = await getProjectForUser(user, projectId);
   if (!project) notFound();
-  const [milestones, updates, files] = await Promise.all([
+  const [milestones, updates, files, approvals] = await Promise.all([
     listMilestonesForUser(user, project.id),
     listUpdatesForUser(user, project.id),
     listFilesForUser(user, project.id),
+    listApprovalsForUser(user, project.id),
   ]);
   return (
     <div className="flex flex-col gap-6">
@@ -60,6 +63,7 @@ export default async function ProjectPage({
         </div>
       </dl>
       <MilestoneTimeline projectId={project.id} items={milestones} today={todayInChicago()} canEdit={user.kind === "team"} />
+      <ApprovalList projectId={project.id} items={approvals} files={files} isTeam={user.kind === "team"} canDecide={canDecideApproval(user)} />
       <UpdateFeed projectId={project.id} items={updates} attachments={groupByUpdate(files)} canEdit={user.kind === "team"} />
       <FileList projectId={project.id} items={files} canEdit={user.kind === "team"} />
       {user.kind === "team" && (
