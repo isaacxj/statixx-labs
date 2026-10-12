@@ -1,9 +1,9 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { sortMilestones, type MilestoneInput } from "@/lib/milestones";
 import { canSeeClient, type CurrentUser } from "@/lib/access";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { clientUsers, clients, milestones, projects, type ClientUserRole } from "./schema";
+import { clientUsers, clients, milestones, projects, updates, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -160,4 +160,21 @@ export async function setMilestoneDone(projectId: number, milestoneId: number, d
 
 export async function deleteMilestone(projectId: number, milestoneId: number) {
   await getDb().delete(milestones).where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, projectId)));
+}
+
+/** Updates of one project, newest first, only if the user may see its client; empty otherwise. */
+export async function listUpdatesForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  return getDb().select().from(updates).where(eq(updates.projectId, projectId)).orderBy(desc(updates.createdAt), desc(updates.id));
+}
+
+/** Team-only write; callers check the role. */
+export async function insertUpdate(projectId: number, authorEmail: string, bodyMd: string) {
+  await getDb().insert(updates).values({ projectId, authorEmail, bodyMd });
+}
+
+/** Team-only; scoped to the project so an id from another project is ignored. */
+export async function deleteUpdate(projectId: number, updateId: number) {
+  await getDb().delete(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId)));
 }

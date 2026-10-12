@@ -15,6 +15,13 @@
       "when": 1791772670406,
       "tag": "0001_volatile_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791776303534,
+      "tag": "0002_sour_microchip",
+      "breakpoints": true
     }
   ]
 }
