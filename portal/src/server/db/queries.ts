@@ -194,12 +194,21 @@ export async function listUpdatesForUser(user: CurrentUser, projectId: number) {
 
 /** Team-only write; callers check the role. */
 export async function insertUpdate(projectId: number, authorEmail: string, bodyMd: string) {
-  await getDb().insert(updates).values({ projectId, authorEmail, bodyMd });
+  const rows = await getDb().insert(updates).values({ projectId, authorEmail, bodyMd }).returning({ id: updates.id });
+  return rows[0].id;
 }
 
-/** Team-only; scoped to the project so an id from another project is ignored. */
+/** Team-only; scoped to the project. Removes the update and its attachments; returns the R2 keys to delete. */
 export async function deleteUpdate(projectId: number, updateId: number) {
-  await getDb().delete(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId)));
+  const db = getDb();
+  const owned = await db.select({ id: updates.id }).from(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId))).limit(1);
+  if (!owned[0]) return [];
+  const attached = await db.select({ r2Key: files.r2Key }).from(files).where(and(eq(files.updateId, updateId), eq(files.projectId, projectId)));
+  await db.batch([
+    db.delete(files).where(and(eq(files.updateId, updateId), eq(files.projectId, projectId))),
+    db.delete(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId))),
+  ]);
+  return attached.map((f) => f.r2Key);
 }
 
 /** Files of one project, newest first, only if the user may see its client; empty otherwise. */
@@ -218,7 +227,7 @@ export async function getFileForUser(user: CurrentUser, fileId: number) {
 }
 
 /** Team-only write; callers check the role. */
-export async function insertFile(input: { projectId: number; r2Key: string; name: string; size: number; contentType: string; uploadedBy: string }) {
+export async function insertFile(input: { projectId: number; updateId?: number; r2Key: string; name: string; size: number; contentType: string; uploadedBy: string }) {
   await getDb().insert(files).values(input);
 }
 

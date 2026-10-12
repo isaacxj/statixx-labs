@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_FILE_BYTES, fileKind, formatFileSize, parseFileUpload, safeFileName } from "./files";
+import { MAX_ATTACHMENTS, MAX_FILE_BYTES, fileKind, formatFileSize, groupByUpdate, parseAttachments, parseFileUpload, safeFileName } from "./files";
 
 describe("files", () => {
   it("formats sizes", () => {
@@ -28,5 +28,24 @@ describe("files", () => {
     Object.defineProperty(huge, "size", { value: MAX_FILE_BYTES + 1 });
     big.set("file", huge);
     expect(parseFileUpload(big).ok).toBe(false);
+  });
+  it("parses attachments, ignoring empty picks and capping the count", () => {
+    const none = new FormData();
+    none.append("attachments", new File([], ""));
+    expect(parseAttachments(none)).toEqual({ ok: true, value: [] });
+    const two = new FormData();
+    two.append("attachments", new File(["a"], "a.txt"));
+    two.append("attachments", new File(["b"], "b.txt"));
+    const parsed = parseAttachments(two);
+    expect(parsed.ok && parsed.value.length).toBe(2);
+    const many = new FormData();
+    for (let i = 0; i <= MAX_ATTACHMENTS; i++) many.append("attachments", new File(["x"], `f${i}.txt`));
+    expect(parseAttachments(many).ok).toBe(false);
+  });
+  it("groups files by update", () => {
+    const grouped = groupByUpdate([{ id: 4, updateId: 1, n: "c" }, { id: 3, updateId: null, n: "b" }, { id: 2, updateId: 1, n: "a" }, { id: 1, updateId: 2, n: "d" }]);
+    expect(grouped.get(1)?.map((f) => f.n)).toEqual(["a", "c"]);
+    expect(grouped.get(2)?.length).toBe(1);
+    expect(grouped.size).toBe(2);
   });
 });

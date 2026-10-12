@@ -31,6 +31,28 @@ export function parseFileUpload(form: FormData): Result<File> {
   return { ok: true, value: file };
 }
 
+export const MAX_ATTACHMENTS = 5;
+
+/** Optional attachments from a multi-file input named "attachments"; empty picks are ignored. */
+export function parseAttachments(form: FormData): Result<File[]> {
+  const picked = form.getAll("attachments").filter((f): f is File => f instanceof File && f.size > 0);
+  if (picked.length > MAX_ATTACHMENTS) return { ok: false, error: `Attach up to ${MAX_ATTACHMENTS} files per update.` };
+  const tooBig = picked.find((f) => f.size > MAX_FILE_BYTES);
+  if (tooBig) return { ok: false, error: `${safeFileName(tooBig.name)} is over ${formatFileSize(MAX_FILE_BYTES)}.` };
+  return { ok: true, value: picked };
+}
+
+/** Groups files by the update they are attached to, oldest first within an update; files without an update are left out. */
+export function groupByUpdate<T extends { id: number; updateId: number | null }>(items: T[]): Map<number, T[]> {
+  const map = new Map<number, T[]>();
+  for (const item of items) {
+    if (item.updateId == null) continue;
+    map.set(item.updateId, [...(map.get(item.updateId) ?? []), item]);
+  }
+  for (const [id, list] of map) map.set(id, [...list].sort((a, b) => a.id - b.id));
+  return map;
+}
+
 /** 1536 to "1.5 KB". */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

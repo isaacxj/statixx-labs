@@ -14,6 +14,11 @@ const ICONS: Record<FileKind, typeof FileIcon> = {
   other: FileIcon,
 };
 
+export function FileTypeIcon({ name, className }: { name: string; className?: string }) {
+  const Icon = ICONS[fileKind(name)];
+  return <Icon className={className} aria-hidden />;
+}
+
 /** Files shared on a project, newest first. Team can upload and remove; everyone allowed here can download. */
 export function FileList({ projectId, items, canEdit }: { projectId: number; items: ProjectFile[]; canEdit: boolean }) {
   return (
@@ -42,10 +47,9 @@ export function FileList({ projectId, items, canEdit }: { projectId: number; ite
       ) : (
         <ul className="bg-card divide-y rounded-md border">
           {items.map((f) => {
-            const Icon = ICONS[fileKind(f.name)];
             return (
               <li key={f.id} className="flex items-center gap-3 p-3">
-                <Icon className="text-muted-foreground size-4 shrink-0" aria-hidden />
+                <FileTypeIcon name={f.name} className="text-muted-foreground size-4 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{f.name}</p>
                   <p className="text-muted-foreground font-mono text-xs tabular-nums">

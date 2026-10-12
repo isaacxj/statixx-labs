@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { groupByUpdate } from "@/lib/files";
 import { FileList } from "@/components/file-list";
 import { MilestoneTimeline } from "@/components/milestone-timeline";
 import { Notice } from "@/components/notice";
@@ -59,7 +60,7 @@ export default async function ProjectPage({
         </div>
       </dl>
       <MilestoneTimeline projectId={project.id} items={milestones} today={todayInChicago()} canEdit={user.kind === "team"} />
-      <UpdateFeed projectId={project.id} items={updates} canEdit={user.kind === "team"} />
+      <UpdateFeed projectId={project.id} items={updates} attachments={groupByUpdate(files)} canEdit={user.kind === "team"} />
       <FileList projectId={project.id} items={files} canEdit={user.kind === "team"} />
       {user.kind === "team" && (
         <form action={updateProjectAction.bind(null, project.id)} className="bg-card grid gap-3 rounded-md border p-4 sm:grid-cols-2">
