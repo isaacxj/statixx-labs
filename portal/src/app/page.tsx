@@ -2,9 +2,11 @@ import Link from "next/link";
 import Markdown from "react-markdown";
 import { StatusBadge } from "@/components/status-badge";
 import { milestoneProgress, nextMilestone, todayInChicago } from "@/lib/milestones";
-import { formatDate } from "@/lib/status";
+import { splitWaiting, summarizeClients, type WaitingItem } from "@/lib/overview";
+import { formatDate, STATUS_LABELS } from "@/lib/status";
 import { formatPostedAt } from "@/lib/updates";
 import {
+  getTeamOverviewData,
   hasActiveClientUser,
   listClientsWithUsers,
   listLatestUpdatesForClientEmail,
@@ -130,28 +132,97 @@ async function ClientHome({ email }: { email: string }) {
   );
 }
 
+const DOT_TONES = { on_track: "bg-success", at_risk: "bg-warning", blocked: "bg-danger", done: "bg-muted-foreground" } as const;
+
+function WaitingColumn({ id, title, hint, items, empty }: { id: string; title: string; hint: string; items: WaitingItem[]; empty: string }) {
+  return (
+    <section aria-labelledby={id} className="bg-card flex flex-col gap-3 rounded-lg border p-4">
+      <div>
+        <h3 id={id} className="text-sm font-semibold">
+          {title} <span className="text-muted-foreground font-mono tabular-nums">{items.length}</span>
+        </h3>
+        <p className="text-muted-foreground text-xs">{hint}</p>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-muted-foreground text-sm">{empty}</p>
+      ) : (
+        <ul className="divide-border divide-y">
+          {items.map((i) => (
+            <li key={`${i.kind}-${i.id}`} className="flex items-baseline justify-between gap-3 py-2 first:pt-0 last:pb-0">
+              <span className="min-w-0">
+                <Link href={`/projects/${i.projectId}`} className="block truncate text-sm font-medium hover:underline">
+                  {i.title}
+                </Link>
+                <span className="text-muted-foreground block truncate text-xs">
+                  {i.kind === "approval" ? "Approval" : "Request"} · {i.projectName}
+                </span>
+              </span>
+              <time className="text-muted-foreground font-mono text-xs whitespace-nowrap tabular-nums" dateTime={`${i.since.replace(" ", "T")}Z`}>
+                {formatPostedAt(i.since).split(",").slice(0, 2).join(",")}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default async function HomePage() {
   const viewer = await getViewer();
   if (viewer.variant === "client") return <ClientHome email={viewer.email} />;
-  const [clients, projects] = await Promise.all([listClientsWithUsers(), listProjectsWithClient()]);
+  const [clients, projects, overview] = await Promise.all([listClientsWithUsers(), listProjectsWithClient(), getTeamOverviewData()]);
+  const waiting = splitWaiting(overview.projects, overview.approvals, overview.requests);
+  const summaries = summarizeClients(clients.map((c) => c.id), overview.projects, waiting, overview.activity);
   return (
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Portal</h1>
-        <p className="text-muted-foreground">Clients, the people who can sign in for them, and their projects, read from local D1.</p>
+        <p className="text-muted-foreground">What is waiting on you, what is waiting on each client, and where every project stands.</p>
       </header>
+      <section aria-labelledby="waiting" className="flex flex-col gap-3">
+        <h2 id="waiting" className="text-base font-semibold">Waiting on</h2>
+        <div className="grid gap-3 md:grid-cols-2">
+          <WaitingColumn id="waiting-us" title="Waiting on us" hint="Requests that are open or in progress" items={waiting.waitingOnUs} empty="Nothing waiting on us. Requests from clients show up here." />
+          <WaitingColumn id="waiting-client" title="Waiting on the client" hint="Approvals no one has decided yet" items={waiting.waitingOnClient} empty="Nothing waiting on clients. Ask for an approval from a project page." />
+        </div>
+      </section>
       <section aria-labelledby="clients" className="flex flex-col gap-3">
         <h2 id="clients" className="text-base font-semibold">Clients</h2>
-        <ul className="bg-card divide-border rounded-md divide-y border">
-          {clients.map((c) => (
-            <li key={c.id} className="flex flex-col gap-1 px-4 py-3">
-              <span className="font-medium">{c.name}</span>
-              <span className="text-muted-foreground text-xs">
-                {c.users.map((u) => `${u.email} (${u.role}${u.active ? "" : ", inactive"})`).join(" · ") || "No users yet"}
-              </span>
-            </li>
-          ))}
-        </ul>
+        {clients.length === 0 ? (
+          <p className="text-muted-foreground bg-card rounded-md border p-4 text-sm">
+            No clients yet. <Link href="/clients" className="text-primary underline">Add the first client</Link>.
+          </p>
+        ) : (
+          <ul className="bg-card divide-border rounded-md divide-y border">
+            {clients.map((c, i) => {
+              const s = summaries[i];
+              return (
+                <li key={c.id} className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                  <span className="min-w-0">
+                    <Link href={`/clients/${c.id}`} className="font-medium hover:underline">
+                      {c.name}
+                    </Link>
+                    <span className="text-muted-foreground block text-xs">
+                      {s.lastActivity ? `Last activity ${formatPostedAt(s.lastActivity).split(",").slice(0, 2).join(",")}` : "No activity yet"}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    <span className="flex items-center gap-1.5" role="img" aria-label={(Object.keys(s.projectCounts) as (keyof typeof s.projectCounts)[]).filter((k) => s.projectCounts[k] > 0).map((k) => `${s.projectCounts[k]} ${STATUS_LABELS[k]}`).join(", ") || "No projects"}>
+                      {(Object.keys(s.projectCounts) as (keyof typeof s.projectCounts)[]).flatMap((k) =>
+                        Array.from({ length: s.projectCounts[k] }, (_, n) => <span key={`${k}-${n}`} aria-hidden className={`size-2 rounded-full ${DOT_TONES[k]}`} />),
+                      )}
+                      {Object.values(s.projectCounts).every((n) => n === 0) && <span className="text-muted-foreground">No projects</span>}
+                    </span>
+                    <span className="text-muted-foreground font-mono tabular-nums">
+                      {s.openApprovals} approval{s.openApprovals === 1 ? "" : "s"} · {s.openRequests} request{s.openRequests === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </section>
       <section aria-labelledby="projects" className="flex flex-col gap-3">
         <h2 id="projects" className="text-base font-semibold">Projects</h2>

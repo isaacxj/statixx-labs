@@ -347,3 +347,20 @@ export async function insertComment(user: CurrentUser, projectId: number, parent
   await db.insert(comments).values({ parentType, parentId, authorEmail: user.email, bodyMd });
   return true;
 }
+
+/** Team-wide rows for the overview: every project, pending approval, unfinished request, and activity timestamp. */
+export async function getTeamOverviewData() {
+  const db = getDb();
+  const [projectRows, approvalRows, requestRows, updateRows] = await Promise.all([
+    db.select({ id: projects.id, clientId: projects.clientId, name: projects.name, status: projects.status }).from(projects).orderBy(asc(projects.name)),
+    db.select({ id: approvals.id, projectId: approvals.projectId, title: approvals.title, status: approvals.status, createdAt: approvals.createdAt, updatedAt: approvals.updatedAt }).from(approvals),
+    db.select({ id: requests.id, projectId: requests.projectId, title: requests.title, status: requests.status, createdAt: requests.createdAt, updatedAt: requests.updatedAt }).from(requests),
+    db.select({ projectId: updates.projectId, at: updates.createdAt }).from(updates),
+  ]);
+  const clientOf = new Map(projectRows.map((p) => [p.id, p.clientId]));
+  const activity: { clientId: number; at: string }[] = [];
+  for (const u of updateRows) activity.push({ clientId: clientOf.get(u.projectId) ?? -1, at: u.at });
+  for (const a of approvalRows) activity.push({ clientId: clientOf.get(a.projectId) ?? -1, at: a.updatedAt });
+  for (const r of requestRows) activity.push({ clientId: clientOf.get(r.projectId) ?? -1, at: r.updatedAt });
+  return { projects: projectRows, approvals: approvalRows.filter((a) => a.status === "pending"), requests: requestRows, activity };
+}
