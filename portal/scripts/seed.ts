@@ -1,0 +1,29 @@
+import { getPlatformProxy } from "wrangler";
+
+const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ configPath: "wrangler.jsonc", persist: { path: ".wrangler/state/v3" } });
+const db = env.DB;
+
+await db.batch([
+  db.prepare("DELETE FROM updates"),
+  db.prepare("DELETE FROM milestones"),
+  db.prepare("DELETE FROM projects"),
+  db.prepare("DELETE FROM client_users"),
+  db.prepare("DELETE FROM clients"),
+  db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('updates','milestones','projects','client_users','clients')"),
+  db.prepare("INSERT INTO clients (name, slug, accent) VALUES ('Northwind Dental', 'northwind-dental', '#0EA5E9'), ('Park & Sons Roofing', 'park-sons-roofing', '#F97316')"),
+  db.prepare(
+    "INSERT INTO client_users (client_id, email, name, role, active) VALUES (1, 'maria@northwinddental.example', 'Maria Chen', 'approver', 1), (1, 'front-desk@northwinddental.example', 'Front Desk', 'viewer', 1), (2, 'dale@parkandsons.example', 'Dale Park', 'approver', 1)",
+  ),
+  db.prepare(
+    "INSERT INTO projects (client_id, name, status, summary, starts_on, due_on) VALUES (1, 'Website refresh', 'on_track', 'New homepage, service pages, and online booking.', '2026-09-15', '2026-11-14'), (1, 'Monthly care plan', 'on_track', 'Updates, backups, and small fixes.', '2026-09-01', NULL), (2, 'Lead-gen landing pages', 'at_risk', 'Three landing pages waiting on final photos.', '2026-10-01', '2026-10-31')",
+  ),
+  db.prepare(
+    "INSERT INTO milestones (project_id, title, due_on, done_on, position) VALUES (1, 'Discovery and sitemap', '2026-09-26', '2026-09-25', 0), (1, 'Homepage design approved', '2026-10-10', '2026-10-09', 1), (1, 'Service pages built', '2026-10-24', NULL, 2), (1, 'Booking integration', '2026-11-05', NULL, 3), (1, 'Launch', '2026-11-14', NULL, 4), (3, 'Photos received', '2026-10-08', NULL, 0), (3, 'Pages live', '2026-10-31', NULL, 1)",
+  ),
+  db.prepare(
+    "INSERT INTO updates (project_id, author_email, body_md, created_at, updated_at) VALUES (1, 'dev@localhost', 'Homepage design is **approved**. Next up:\n\n- Service page templates\n- Booking widget spike', '2026-10-09 15:10:00', '2026-10-09 15:10:00'), (1, 'dev@localhost', 'Sitemap signed off. Kickoff notes are in the `Discovery` doc.', '2026-09-25 18:30:00', '2026-09-25 18:30:00'), (3, 'dev@localhost', 'Waiting on final photos before the pages can go live.', '2026-10-08 14:00:00', '2026-10-08 14:00:00')",
+  ),
+]);
+
+console.log("Seeded 2 clients, 3 client users, 3 projects, 7 milestones, 3 updates");
+await dispose();
