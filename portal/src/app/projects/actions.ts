@@ -4,8 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { parseMilestoneInput, todayInChicago } from "@/lib/milestones";
 import { parseProjectInput } from "@/lib/projects";
+import { parseFileUpload, safeFileName } from "@/lib/files";
 import { parseUpdateInput } from "@/lib/updates";
-import { deleteMilestone, deleteUpdate, insertMilestone, insertProject, insertUpdate, setMilestoneDone, updateProject } from "@/server/db/queries";
+import { env } from "cloudflare:workers";
+import { deleteFile, deleteMilestone, deleteUpdate, insertFile, insertMilestone, insertProject, insertUpdate, setMilestoneDone, updateProject } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 
 async function requireTeam() {
@@ -79,4 +81,26 @@ export async function deleteUpdateAction(projectId: number, updateId: number) {
   await deleteUpdate(projectId, updateId);
   revalidatePath(path);
   return back(path, "saved", "Update removed");
+}
+
+export async function uploadFileAction(projectId: number, form: FormData) {
+  const user = await requireTeam();
+  const path = `/projects/${projectId}`;
+  const parsed = parseFileUpload(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  const file = parsed.value;
+  const r2Key = `projects/${projectId}/${crypto.randomUUID()}`;
+  await env.FILES.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType: file.type || "application/octet-stream" } });
+  await insertFile({ projectId, r2Key, name: safeFileName(file.name), size: file.size, contentType: file.type || "application/octet-stream", uploadedBy: user.email });
+  revalidatePath(path);
+  return back(path, "saved", "File uploaded");
+}
+
+export async function deleteFileAction(projectId: number, fileId: number) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  const key = await deleteFile(projectId, fileId);
+  if (key) await env.FILES.delete(key);
+  revalidatePath(path);
+  return back(path, "saved", "File removed");
 }

@@ -66,3 +66,18 @@ export const updates = sqliteTable("updates", {
 });
 
 export type Update = typeof updates.$inferSelect;
+
+export const files = sqliteTable("files", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  updateId: integer("update_id").references(() => updates.id),
+  requestId: integer("request_id"),
+  r2Key: text("r2_key").notNull().unique(),
+  name: text("name").notNull(),
+  size: integer("size").notNull(),
+  contentType: text("content_type").notNull().default("application/octet-stream"),
+  uploadedBy: text("uploaded_by").notNull(),
+  ...timestamps,
+});
+
+export type ProjectFile = typeof files.$inferSelect;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileList } from "@/components/file-list";
 import { MilestoneTimeline } from "@/components/milestone-timeline";
 import { Notice } from "@/components/notice";
 import { UpdateFeed } from "@/components/update-feed";
@@ -10,7 +11,7 @@ import { Select } from "@/components/ui/select";
 import { todayInChicago } from "@/lib/milestones";
 import { STATUS_LABELS, formatDate } from "@/lib/status";
 import { PROJECT_STATUSES } from "@/server/db/schema";
-import { getProjectForUser, listMilestonesForUser, listUpdatesForUser } from "@/server/db/queries";
+import { getProjectForUser, listFilesForUser, listMilestonesForUser, listUpdatesForUser } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 import { updateProjectAction } from "../actions";
 
@@ -29,7 +30,11 @@ export default async function ProjectPage({
   const user = await getCurrentUser();
   const project = await getProjectForUser(user, projectId);
   if (!project) notFound();
-  const [milestones, updates] = await Promise.all([listMilestonesForUser(user, project.id), listUpdatesForUser(user, project.id)]);
+  const [milestones, updates, files] = await Promise.all([
+    listMilestonesForUser(user, project.id),
+    listUpdatesForUser(user, project.id),
+    listFilesForUser(user, project.id),
+  ]);
   return (
     <div className="flex flex-col gap-6">
       <Link href="/" className="text-muted-foreground hover:text-foreground text-sm">
@@ -55,6 +60,7 @@ export default async function ProjectPage({
       </dl>
       <MilestoneTimeline projectId={project.id} items={milestones} today={todayInChicago()} canEdit={user.kind === "team"} />
       <UpdateFeed projectId={project.id} items={updates} canEdit={user.kind === "team"} />
+      <FileList projectId={project.id} items={files} canEdit={user.kind === "team"} />
       {user.kind === "team" && (
         <form action={updateProjectAction.bind(null, project.id)} className="bg-card grid gap-3 rounded-md border p-4 sm:grid-cols-2">
           <h2 className="text-base font-semibold sm:col-span-2">Edit project</h2>

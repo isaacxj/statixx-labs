@@ -22,6 +22,13 @@
       "when": 1791776303534,
       "tag": "0002_sour_microchip",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791812324673,
+      "tag": "0003_same_cannonball",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,7 @@ import { sortMilestones, type MilestoneInput } from "@/lib/milestones";
 import { canSeeClient, type CurrentUser } from "@/lib/access";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { clientUsers, clients, milestones, projects, updates, type ClientUserRole } from "./schema";
+import { clientUsers, clients, files, milestones, projects, updates, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -200,4 +200,33 @@ export async function insertUpdate(projectId: number, authorEmail: string, bodyM
 /** Team-only; scoped to the project so an id from another project is ignored. */
 export async function deleteUpdate(projectId: number, updateId: number) {
   await getDb().delete(updates).where(and(eq(updates.id, updateId), eq(updates.projectId, projectId)));
+}
+
+/** Files of one project, newest first, only if the user may see its client; empty otherwise. */
+export async function listFilesForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  return getDb().select().from(files).where(eq(files.projectId, projectId)).orderBy(desc(files.createdAt), desc(files.id));
+}
+
+/** One file, only if the user may see its project's client; null otherwise so the download answers 404. */
+export async function getFileForUser(user: CurrentUser, fileId: number) {
+  const rows = await getDb().select().from(files).where(eq(files.id, fileId)).limit(1);
+  const file = rows[0];
+  if (!file) return null;
+  return (await getProjectForUser(user, file.projectId)) ? file : null;
+}
+
+/** Team-only write; callers check the role. */
+export async function insertFile(input: { projectId: number; r2Key: string; name: string; size: number; contentType: string; uploadedBy: string }) {
+  await getDb().insert(files).values(input);
+}
+
+/** Team-only; scoped to the project. Returns the R2 key to delete, or null when nothing matched. */
+export async function deleteFile(projectId: number, fileId: number) {
+  const rows = await getDb()
+    .delete(files)
+    .where(and(eq(files.id, fileId), eq(files.projectId, projectId)))
+    .returning({ r2Key: files.r2Key });
+  return rows[0]?.r2Key ?? null;
 }

@@ -4,12 +4,13 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ configPath
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM files"),
   db.prepare("DELETE FROM updates"),
   db.prepare("DELETE FROM milestones"),
   db.prepare("DELETE FROM projects"),
   db.prepare("DELETE FROM client_users"),
   db.prepare("DELETE FROM clients"),
-  db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('updates','milestones','projects','client_users','clients')"),
+  db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('files','updates','milestones','projects','client_users','clients')"),
   db.prepare("INSERT INTO clients (name, slug, accent) VALUES ('Northwind Dental', 'northwind-dental', '#0EA5E9'), ('Park & Sons Roofing', 'park-sons-roofing', '#F97316')"),
   db.prepare(
     "INSERT INTO client_users (client_id, email, name, role, active) VALUES (1, 'maria@northwinddental.example', 'Maria Chen', 'approver', 1), (1, 'front-desk@northwinddental.example', 'Front Desk', 'viewer', 1), (2, 'dale@parkandsons.example', 'Dale Park', 'approver', 1)",
