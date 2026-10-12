@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { UserPlus } from "lucide-react";
+import { Plus, UserPlus } from "lucide-react";
 import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { getClientWithUsers } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
+import { createProjectAction } from "@/app/projects/actions";
+import { STATUS_LABELS } from "@/lib/status";
+import { PROJECT_STATUSES } from "@/server/db/schema";
 import { addClientUserAction, updateClientUserAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +101,37 @@ export default async function ClientPage({
             ))}
           </ul>
         )}
+        <form action={createProjectAction.bind(null, client.id)} className="bg-card grid gap-3 rounded-md border p-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-sm sm:col-span-2">
+            Project name
+            <Input name="name" required placeholder="Website refresh" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm sm:col-span-2">
+            Summary
+            <Input name="summary" placeholder="One line the client will see" />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Status
+            <Select name="status" defaultValue="on_track">
+              {PROJECT_STATUSES.map((s) => (
+                <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              ))}
+            </Select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              Starts
+              <Input name="startsOn" type="date" />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Due
+              <Input name="dueOn" type="date" />
+            </label>
+          </div>
+          <div className="sm:col-span-2">
+            <Button type="submit"><Plus /> Add project</Button>
+          </div>
+        </form>
       </section>
     </div>
   );

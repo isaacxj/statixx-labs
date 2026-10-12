@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { canSeeClient, type CurrentUser } from "@/lib/access";
 import { getDb } from "./index";
+import type { ProjectInput } from "@/lib/projects";
 import { clientUsers, clients, projects, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
@@ -115,4 +116,17 @@ export async function updateClientUser(clientId: number, userId: number, patch: 
     .update(clientUsers)
     .set({ ...patch, updatedAt: sql`(datetime('now'))` })
     .where(and(eq(clientUsers.id, userId), eq(clientUsers.clientId, clientId)));
+}
+
+export async function insertProject(clientId: number, input: ProjectInput) {
+  const rows = await getDb().insert(projects).values({ clientId, ...input }).returning({ id: projects.id });
+  return rows[0].id;
+}
+
+/** Team-only write; callers check the role. */
+export async function updateProject(projectId: number, input: ProjectInput) {
+  await getDb()
+    .update(projects)
+    .set({ ...input, updatedAt: sql`(datetime('now'))` })
+    .where(eq(projects.id, projectId));
 }
