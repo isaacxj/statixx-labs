@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { canSeeClient, type CurrentUser } from "@/lib/access";
 import { getDb } from "./index";
-import { clientUsers, clients, projects } from "./schema";
+import { clientUsers, clients, projects, type ClientUserRole } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -85,4 +85,34 @@ export async function getProjectForUser(user: CurrentUser, projectId: number) {
     .limit(1);
   const project = rows[0];
   return project && canSeeClient(user, project.clientId) ? project : null;
+}
+
+/** Team-only: one client with all of its users, or null. */
+export async function getClientWithUsers(clientId: number) {
+  const db = getDb();
+  const [clientRows, userRows, projectRows] = await Promise.all([
+    db.select().from(clients).where(eq(clients.id, clientId)).limit(1),
+    db.select().from(clientUsers).where(eq(clientUsers.clientId, clientId)).orderBy(asc(clientUsers.email)),
+    db.select({ id: projects.id, name: projects.name, status: projects.status }).from(projects).where(eq(projects.clientId, clientId)).orderBy(asc(projects.name)),
+  ]);
+  const client = clientRows[0];
+  return client ? { ...client, users: userRows, projects: projectRows } : null;
+}
+
+export async function insertClient(input: { name: string; slug: string; accent: string }) {
+  const rows = await getDb().insert(clients).values(input).onConflictDoNothing().returning({ id: clients.id });
+  return rows[0]?.id ?? null;
+}
+
+/** Returns false when the email already belongs to a client user (emails are unique across clients). */
+export async function insertClientUser(clientId: number, input: { email: string; name: string; role: ClientUserRole }) {
+  const rows = await getDb().insert(clientUsers).values({ clientId, ...input }).onConflictDoNothing().returning({ id: clientUsers.id });
+  return rows.length > 0;
+}
+
+export async function updateClientUser(clientId: number, userId: number, patch: { role?: ClientUserRole; active?: boolean }) {
+  await getDb()
+    .update(clientUsers)
+    .set({ ...patch, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(clientUsers.id, userId), eq(clientUsers.clientId, clientId)));
 }

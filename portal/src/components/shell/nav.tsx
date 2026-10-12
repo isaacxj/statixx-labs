@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, LayoutDashboard, Palette, type LucideIcon } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Palette, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
 export const TEAM_NAV: NavItem[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/clients", label: "Clients", icon: Users },
   { href: "/design", label: "Design", icon: Palette },
 ];
 export const CLIENT_NAV: NavItem[] = [{ href: "/", label: "Projects", icon: FolderKanban }];
