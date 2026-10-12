@@ -29,3 +29,7 @@ Locally, the signed-in email comes from `DEV_USER_EMAIL` in `wrangler.jsonc`, an
 | `pnpm db:generate` | Generate a Drizzle migration from `src/server/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to local D1 |
 | `pnpm db:seed` | Reset and seed local D1 |
+
+## Daily digest job
+
+`workers/jobs/` is a separate Worker (`portal-jobs`) bound to the same D1 database. A daily Cron Trigger (13:00 UTC) builds the team digest and emails it to every address in `TEAM_EMAILS` through the `DIGEST_EMAIL` send_email binding; nothing is sent when there is nothing new. To try it locally, run `pnpm db:migrate && pnpm db:seed`, then `pnpm jobs:dev` and `curl http://localhost:8788/cdn-cgi/handler/scheduled`. Wrangler prints the path of the `.eml` file it wrote.

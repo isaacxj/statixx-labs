@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "portal-jobs",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "triggers": { "crons": ["0 13 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "portal",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../../drizzle"
+    }
+  ],
+  "send_email": [{ "name": "DIGEST_EMAIL" }],
+  "vars": { "TEAM_EMAILS": "dev@localhost", "DIGEST_FROM": "portal@localhost" }
+}
