@@ -19,7 +19,7 @@ function Section({ id, title, lines, empty }: { id: string; title: string; lines
         <ul className="divide-border divide-y">
           {lines.map((l) => (
             <li key={l.key} className="py-2 first:pt-0 last:pb-0">
-              <Link href={`/projects/${l.projectId}`} className="block text-sm font-medium hover:underline">
+              <Link href={`/projects/${l.projectId}`} className="block text-sm font-medium max-md:flex max-md:min-h-11 max-md:items-center hover:underline">
                 {l.title}
               </Link>
               <span className="text-muted-foreground block text-xs">

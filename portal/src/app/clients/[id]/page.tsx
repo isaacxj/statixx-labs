@@ -30,7 +30,7 @@ export default async function ClientPage({
   return (
     <div className="flex flex-col gap-6">
       <header>
-        <Link href="/clients" className="text-muted-foreground text-sm hover:underline">
+        <Link href="/clients" className="text-muted-foreground max-md:inline-flex max-md:min-h-11 max-md:min-w-11 max-md:items-center text-sm hover:underline">
           Clients
         </Link>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
@@ -119,7 +119,7 @@ export default async function ClientPage({
           <ul className="bg-card divide-border rounded-md divide-y border">
             {client.projects.map((p) => (
               <li key={p.id} className="flex items-center justify-between px-4 py-3">
-                <Link href={`/projects/${p.id}`} className="font-medium hover:underline">{p.name}</Link>
+                <Link href={`/projects/${p.id}`} className="font-medium max-md:inline-flex max-md:min-h-11 max-md:items-center hover:underline">{p.name}</Link>
                 <StatusBadge status={p.status} />
               </li>
             ))}

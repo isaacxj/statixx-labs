@@ -49,7 +49,7 @@ export default async function ProjectPage({
   const teamEmails = parseEmails(env.TEAM_EMAILS);
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/" className="text-muted-foreground hover:text-foreground text-sm">
+      <Link href="/" className="text-muted-foreground hover:text-foreground max-md:inline-flex max-md:min-h-11 max-md:items-center text-sm">
         ← {project.clientName}
       </Link>
       <header className="flex flex-col gap-2">

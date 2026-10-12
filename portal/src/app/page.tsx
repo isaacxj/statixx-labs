@@ -26,7 +26,7 @@ function ProjectList({ projects, showClient }: { projects: ProjectRow[]; showCli
       {projects.map((p) => (
         <li key={p.id} className="flex items-baseline justify-between gap-3 px-4 py-3">
           <span className="min-w-0">
-            <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
+            <Link href={`/projects/${p.id}`} className="font-medium max-md:inline-flex max-md:min-h-11 max-md:items-center hover:underline">
               {p.name}
             </Link>
             {showClient && <span className="text-muted-foreground"> · {p.clientName}</span>}
@@ -72,7 +72,7 @@ async function ClientHome({ email }: { email: string }) {
             return (
               <li key={p.id} className="bg-card flex flex-col gap-3 rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <Link href={`/projects/${p.id}`} className="font-medium hover:underline">
+                  <Link href={`/projects/${p.id}`} className="font-medium max-md:inline-flex max-md:min-h-11 max-md:items-center hover:underline">
                     {p.name}
                   </Link>
                   <StatusBadge status={p.status} />
@@ -112,7 +112,7 @@ async function ClientHome({ email }: { email: string }) {
               {latest.map((u) => (
                 <li key={u.id} className="bg-card rounded-md border p-4">
                   <div className="mb-2 flex items-baseline justify-between gap-3 text-xs">
-                    <Link href={`/projects/${u.projectId}`} className="text-foreground font-medium hover:underline">
+                    <Link href={`/projects/${u.projectId}`} className="text-foreground font-medium max-md:inline-flex max-md:min-h-11 max-md:items-center hover:underline">
                       {u.projectName}
                     </Link>
                     <time className="text-muted-foreground font-mono tabular-nums" dateTime={`${u.createdAt.replace(" ", "T")}Z`}>
@@ -150,7 +150,7 @@ function WaitingColumn({ id, title, hint, items, empty }: { id: string; title: s
           {items.map((i) => (
             <li key={`${i.kind}-${i.id}`} className="flex items-baseline justify-between gap-3 py-2 first:pt-0 last:pb-0">
               <span className="min-w-0">
-                <Link href={`/projects/${i.projectId}`} className="block truncate text-sm font-medium hover:underline">
+                <Link href={`/projects/${i.projectId}`} className="block truncate text-sm font-medium max-md:flex max-md:min-h-11 max-md:items-center hover:underline">
                   {i.title}
                 </Link>
                 <span className="text-muted-foreground block truncate text-xs">
@@ -200,7 +200,7 @@ export default async function HomePage() {
               return (
                 <li key={c.id} className="flex flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:justify-between">
                   <span className="min-w-0">
-                    <Link href={`/clients/${c.id}`} className="font-medium hover:underline">
+                    <Link href={`/clients/${c.id}`} className="font-medium max-md:inline-flex max-md:min-h-11 max-md:items-center hover:underline">
                       {c.name}
                     </Link>
                     <span className="text-muted-foreground block text-xs">

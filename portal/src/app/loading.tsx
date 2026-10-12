@@ -1,10 +1,14 @@
+import { Skeleton, SkeletonHeader, SkeletonList, SkeletonPage } from "@/components/ui/skeleton";
+
 export default function Loading() {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex flex-col gap-4">
-      <div className="bg-muted h-8 w-48 animate-pulse rounded-md" />
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="bg-muted h-16 animate-pulse rounded-md" />
-      ))}
-    </div>
+    <SkeletonPage>
+      <SkeletonHeader />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Skeleton className="h-40" />
+        <Skeleton className="h-40" />
+      </div>
+      <SkeletonList rows={3} />
+    </SkeletonPage>
   );
 }
