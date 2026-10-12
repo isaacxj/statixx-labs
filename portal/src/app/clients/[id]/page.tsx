@@ -11,7 +11,7 @@ import { getCurrentUser } from "@/server/viewer";
 import { createProjectAction } from "@/app/projects/actions";
 import { STATUS_LABELS } from "@/lib/status";
 import { PROJECT_STATUSES } from "@/server/db/schema";
-import { addClientUserAction, updateClientUserAction } from "../actions";
+import { addClientUserAction, updateBrandingAction, updateClientUserAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,30 @@ export default async function ClientPage({
         </h1>
       </header>
       <Notice saved={saved} error={error} />
+      <section aria-labelledby="branding" className="flex flex-col gap-3">
+        <h2 id="branding" className="text-base font-semibold">Branding</h2>
+        <p className="text-muted-foreground text-sm">The accent and logo this client sees in their portal. Logos are PNG, JPEG, or WebP up to 1 MB.</p>
+        <form action={updateBrandingAction.bind(null, client.id)} className="bg-card flex flex-wrap items-end gap-4 rounded-md border p-4">
+          {client.logoKey && (
+            // eslint-disable-next-line @next/next/no-img-element -- served by an access-checked route
+            <img src={`/logo/${client.id}`} alt={`${client.name} logo`} className="size-11 rounded-sm border object-contain" />
+          )}
+          <label className="flex flex-col gap-1 text-sm">
+            Accent
+            <Input name="accent" type="color" defaultValue={client.accent} className="w-16 p-1" />
+          </label>
+          <label className="flex min-w-48 flex-1 flex-col gap-1 text-sm">
+            {client.logoKey ? "Replace logo" : "Logo"}
+            <Input name="logo" type="file" accept="image/png,image/jpeg,image/webp" className="py-1.5" />
+          </label>
+          {client.logoKey && (
+            <label className="flex h-9 items-center gap-2 text-sm max-sm:h-11">
+              <input type="checkbox" name="removeLogo" value="1" className="size-4" /> Remove logo
+            </label>
+          )}
+          <Button type="submit">Save branding</Button>
+        </form>
+      </section>
       <section aria-labelledby="users" className="flex flex-col gap-3">
         <h2 id="users" className="text-base font-semibold">People who can sign in</h2>
         <p className="text-muted-foreground text-sm">Approvers can approve deliverables or request changes. Viewers can only read and submit requests.</p>

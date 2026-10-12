@@ -126,6 +126,29 @@ export async function getClientWithUsers(clientId: number) {
   return client ? { ...client, users: userRows, projects: projectRows } : null;
 }
 
+/** Name, accent, and logo key for a client, only if the user may see that client; null otherwise. */
+export async function getClientBrandingForUser(user: CurrentUser, clientId: number) {
+  if (!canSeeClient(user, clientId)) return null;
+  const rows = await getDb()
+    .select({ id: clients.id, name: clients.name, accent: clients.accent, logoKey: clients.logoKey })
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Team-only write: sets the accent, and the logo key when `logoKey` is given (null clears it). Returns the replaced key. */
+export async function updateClientBranding(clientId: number, accent: string, logoKey?: string | null) {
+  const db = getDb();
+  const before = (await db.select({ logoKey: clients.logoKey }).from(clients).where(eq(clients.id, clientId)).limit(1))[0];
+  if (!before) return undefined;
+  await db
+    .update(clients)
+    .set({ accent, ...(logoKey === undefined ? {} : { logoKey }), updatedAt: sql`(datetime('now'))` })
+    .where(eq(clients.id, clientId));
+  return before.logoKey;
+}
+
 export async function insertClient(input: { name: string; slug: string; accent: string }) {
   const rows = await getDb().insert(clients).values(input).onConflictDoNothing().returning({ id: clients.id });
   return rows[0]?.id ?? null;
