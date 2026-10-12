@@ -7,8 +7,9 @@ import { parseProjectInput } from "@/lib/projects";
 import { parseAttachments, parseFileUpload, safeFileName } from "@/lib/files";
 import { parseApprovalDecision, parseApprovalInput } from "@/lib/approvals";
 import { parseUpdateInput } from "@/lib/updates";
+import { parseRequestInput, parseRequestStatus } from "@/lib/requests";
 import { env } from "cloudflare:workers";
-import { decideApproval, deleteApproval, deleteFile, deleteMilestone, deleteUpdate, insertApproval, insertFile, insertMilestone, insertProject, insertUpdate, setMilestoneDone, updateProject } from "@/server/db/queries";
+import { decideApproval, deleteApproval, deleteFile, deleteMilestone, deleteUpdate, insertApproval, insertFile, insertMilestone, insertProject, insertRequest, insertUpdate, setMilestoneDone, setRequestStatus, updateProject } from "@/server/db/queries";
 import { getCurrentUser } from "@/server/viewer";
 
 async function requireTeam() {
@@ -142,4 +143,33 @@ export async function decideApprovalAction(projectId: number, approvalId: number
   if (!done) return back(path, "error", "This approval can't be decided by you, or it was already decided.");
   revalidatePath(path);
   return back(path, "saved", parsed.value.status === "approved" ? "Approved" : "Changes requested");
+}
+
+export async function submitRequestAction(projectId: number, form: FormData) {
+  const user = await getCurrentUser();
+  const path = `/projects/${projectId}`;
+  const parsed = parseRequestInput(form);
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  const attachments = parseAttachments(form);
+  if (!attachments.ok) return back(path, "error", attachments.error);
+  const requestId = await insertRequest(user, projectId, parsed.value);
+  if (requestId === null) return back(path, "error", "You can't send a request on this project.");
+  for (const file of attachments.value) {
+    const contentType = file.type || "application/octet-stream";
+    const r2Key = `projects/${projectId}/${crypto.randomUUID()}`;
+    await env.FILES.put(r2Key, await file.arrayBuffer(), { httpMetadata: { contentType } });
+    await insertFile({ projectId, requestId, r2Key, name: safeFileName(file.name), size: file.size, contentType, uploadedBy: user.email });
+  }
+  revalidatePath(path);
+  return back(path, "saved", "Request sent");
+}
+
+export async function setRequestStatusAction(projectId: number, requestId: number, form: FormData) {
+  await requireTeam();
+  const path = `/projects/${projectId}`;
+  const parsed = parseRequestStatus(form.get("status"));
+  if (!parsed.ok) return back(path, "error", parsed.error);
+  await setRequestStatus(projectId, requestId, parsed.value);
+  revalidatePath(path);
+  return back(path, "saved", "Request updated");
 }

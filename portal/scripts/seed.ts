@@ -4,6 +4,7 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ configPath
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM requests"),
   db.prepare("DELETE FROM approvals"),
   db.prepare("DELETE FROM files"),
   db.prepare("DELETE FROM updates"),
@@ -11,7 +12,7 @@ await db.batch([
   db.prepare("DELETE FROM projects"),
   db.prepare("DELETE FROM client_users"),
   db.prepare("DELETE FROM clients"),
-  db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('approvals','files','updates','milestones','projects','client_users','clients')"),
+  db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('requests','approvals','files','updates','milestones','projects','client_users','clients')"),
   db.prepare("INSERT INTO clients (name, slug, accent) VALUES ('Northwind Dental', 'northwind-dental', '#0EA5E9'), ('Park & Sons Roofing', 'park-sons-roofing', '#F97316')"),
   db.prepare(
     "INSERT INTO client_users (client_id, email, name, role, active) VALUES (1, 'maria@northwinddental.example', 'Maria Chen', 'approver', 1), (1, 'front-desk@northwinddental.example', 'Front Desk', 'viewer', 1), (2, 'dale@parkandsons.example', 'Dale Park', 'approver', 1)",
@@ -28,7 +29,10 @@ await db.batch([
   db.prepare(
     "INSERT INTO approvals (project_id, title, description_md, status) VALUES (1, 'Service pages copy', 'Please check the **wording** and prices on the three service pages.', 'pending'), (3, 'Landing page layout', '', 'pending')",
   ),
+  db.prepare(
+    "INSERT INTO requests (project_id, author_email, title, body_md, status, created_at, updated_at) VALUES (1, 'maria@northwinddental.example', 'Swap the hero photo', 'We have a new photo of the **front desk**. Can it replace the one on the homepage?', 'in_progress', '2026-10-10 16:20:00', '2026-10-10 16:20:00'), (3, 'dale@parkandsons.example', 'Add a phone number to the footer', '', 'open', '2026-10-11 13:05:00', '2026-10-11 13:05:00')",
+  ),
 ]);
 
-console.log("Seeded 2 clients, 3 client users, 3 projects, 7 milestones, 3 updates, 2 approvals");
+console.log("Seeded 2 clients, 3 client users, 3 projects, 7 milestones, 3 updates, 2 approvals, 2 requests");
 await dispose();

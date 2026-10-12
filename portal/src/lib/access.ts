@@ -15,3 +15,8 @@ export function canSeeClient(user: CurrentUser, clientId: number): boolean {
 export function canDecideApproval(user: CurrentUser): boolean {
   return user.kind === "client" && user.role === "approver";
 }
+
+/** Any active client user (viewer or approver) may send a request; the team answers them. */
+export function canSubmitRequest(user: CurrentUser): boolean {
+  return user.kind === "client";
+}

@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { sortMilestones, type MilestoneInput } from "@/lib/milestones";
-import { canDecideApproval, canSeeClient, type CurrentUser } from "@/lib/access";
+import { canDecideApproval, canSeeClient, canSubmitRequest, type CurrentUser } from "@/lib/access";
 import type { ApprovalDecision, ApprovalInput } from "@/lib/approvals";
+import type { RequestInput } from "@/lib/requests";
 import { getDb } from "./index";
 import type { ProjectInput } from "@/lib/projects";
-import { approvals, clientUsers, clients, files, milestones, projects, updates, type ClientUserRole } from "./schema";
+import { approvals, clientUsers, clients, files, milestones, projects, requests, updates, type ClientUserRole, type RequestStatus } from "./schema";
 
 export async function listClientsWithUsers() {
   const db = getDb();
@@ -229,7 +230,7 @@ export async function getFileForUser(user: CurrentUser, fileId: number) {
 }
 
 /** Team-only write; callers check the role. */
-export async function insertFile(input: { projectId: number; updateId?: number; r2Key: string; name: string; size: number; contentType: string; uploadedBy: string }) {
+export async function insertFile(input: { projectId: number; updateId?: number; requestId?: number; r2Key: string; name: string; size: number; contentType: string; uploadedBy: string }) {
   await getDb().insert(files).values(input);
 }
 
@@ -287,4 +288,31 @@ export async function decideApproval(user: CurrentUser, projectId: number, appro
     .where(and(eq(approvals.id, approvalId), eq(approvals.projectId, projectId), eq(approvals.status, "pending")))
     .returning({ id: approvals.id });
   return rows.length > 0;
+}
+
+/** Requests of one project, open ones first then newest, only if the user may see its client; empty otherwise. */
+export async function listRequestsForUser(user: CurrentUser, projectId: number) {
+  const project = await getProjectForUser(user, projectId);
+  if (!project) return [];
+  const rows = await getDb().select().from(requests).where(eq(requests.projectId, projectId)).orderBy(desc(requests.createdAt), desc(requests.id));
+  return rows.sort((a, b) => Number(a.status === "done") - Number(b.status === "done"));
+}
+
+/** A client user files a request on a project of their own client. Returns the new id, or null when they may not. */
+export async function insertRequest(user: CurrentUser, projectId: number, input: RequestInput) {
+  if (!canSubmitRequest(user)) return null;
+  if (!(await getProjectForUser(user, projectId))) return null;
+  const rows = await getDb()
+    .insert(requests)
+    .values({ projectId, authorEmail: user.email, title: input.title, bodyMd: input.bodyMd })
+    .returning({ id: requests.id });
+  return rows[0].id;
+}
+
+/** Team-only; scoped to the project so an id from another project is ignored. */
+export async function setRequestStatus(projectId: number, requestId: number, status: RequestStatus) {
+  await getDb()
+    .update(requests)
+    .set({ status, updatedAt: sql`(datetime('now'))` })
+    .where(and(eq(requests.id, requestId), eq(requests.projectId, projectId)));
 }

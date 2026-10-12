@@ -53,6 +53,17 @@ export function groupByUpdate<T extends { id: number; updateId: number | null }>
   return map;
 }
 
+/** Groups files by the request they are attached to, oldest first within a request; files without a request are left out. */
+export function groupByRequest<T extends { id: number; requestId: number | null }>(items: T[]): Map<number, T[]> {
+  const map = new Map<number, T[]>();
+  for (const item of items) {
+    if (item.requestId == null) continue;
+    map.set(item.requestId, [...(map.get(item.requestId) ?? []), item]);
+  }
+  for (const [id, list] of map) map.set(id, [...list].sort((a, b) => a.id - b.id));
+  return map;
+}
+
 /** 1536 to "1.5 KB". */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

@@ -36,6 +36,13 @@
       "when": 1791819462541,
       "tag": "0004_acoustic_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791823064112,
+      "tag": "0005_smart_patriot",
+      "breakpoints": true
     }
   ]
 }

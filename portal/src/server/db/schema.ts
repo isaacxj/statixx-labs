@@ -99,3 +99,18 @@ export const approvals = sqliteTable("approvals", {
 });
 
 export type Approval = typeof approvals.$inferSelect;
+
+export const REQUEST_STATUSES = ["open", "in_progress", "done"] as const;
+export type RequestStatus = (typeof REQUEST_STATUSES)[number];
+
+export const requests = sqliteTable("requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  projectId: integer("project_id").notNull().references(() => projects.id),
+  authorEmail: text("author_email").notNull(),
+  title: text("title").notNull(),
+  bodyMd: text("body_md").notNull().default(""),
+  status: text("status", { enum: REQUEST_STATUSES }).notNull().default("open"),
+  ...timestamps,
+});
+
+export type ClientRequest = typeof requests.$inferSelect;
