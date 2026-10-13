@@ -13,12 +13,21 @@ await db.batch([
       "(2, 'Booking API', 'Northwind Dental', 'https://api.northwinddental.example/health', 'GET', 60, 5000, 200, '', 'down', 2, '2026-10-12 18:00:00', '2026-10-12 18:01:00')," +
       "(3, 'Company site', 'Park & Sons Roofing', 'https://parkandsons.example', 'GET', 300, 10000, 200, '', 'pending', 0, NULL, NULL)",
   ),
+  // 30 days of checks every 15 minutes, relative to now, so uptime windows are never empty.
+  // Monitor 1: an occasional failed check. Monitor 2: healthy until the last two checks.
   db.prepare(
-    "INSERT INTO checks (monitor_id, at, ok, status_code, latency_ms, error) VALUES " +
-      "(1, '2026-10-12 18:00:00', 1, 200, 182, NULL)," +
-      "(2, '2026-10-12 17:59:00', 0, 503, 640, 'Unexpected status 503')," +
-      "(2, '2026-10-12 18:00:00', 0, NULL, NULL, 'Timed out after 5000 ms')",
+    "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 2880) " +
+      "INSERT INTO checks (monitor_id, at, ok, status_code, latency_ms, error) " +
+      "SELECT 1, datetime('now', '-' || (i * 15) || ' minutes'), CASE WHEN i % 97 = 5 THEN 0 ELSE 1 END, CASE WHEN i % 97 = 5 THEN 502 ELSE 200 END, " +
+      "CASE WHEN i % 97 = 5 THEN NULL ELSE 150 + (i * 37) % 90 END, CASE WHEN i % 97 = 5 THEN 'Unexpected status 502' ELSE NULL END FROM n",
   ),
+  db.prepare(
+    "WITH RECURSIVE n(i) AS (SELECT 0 UNION ALL SELECT i + 1 FROM n WHERE i < 2880) " +
+      "INSERT INTO checks (monitor_id, at, ok, status_code, latency_ms, error) " +
+      "SELECT 2, datetime('now', '-' || (i * 15) || ' minutes'), CASE WHEN i < 2 THEN 0 ELSE 1 END, CASE WHEN i < 2 THEN NULL ELSE 200 END, " +
+      "CASE WHEN i < 2 THEN NULL ELSE 90 + (i * 53) % 60 END, CASE WHEN i < 2 THEN 'Timed out after 5000 ms' ELSE NULL END FROM n",
+  ),
+  db.prepare("UPDATE monitors SET last_checked_at = datetime('now') WHERE id IN (1, 2)"),
   db.prepare(
     "INSERT INTO incidents (monitor_id, title, status, started_at, resolved_at, auto) VALUES " +
       "(2, 'Booking API is down: Timed out after 5000 ms', 'investigating', '2026-10-12 18:00:00', NULL, 1)," +
@@ -27,5 +36,5 @@ await db.batch([
 ]);
 
 const { results } = await db.prepare("SELECT COUNT(*) AS n FROM monitors").all<{ n: number }>();
-console.log(`Seeded ${results[0].n} monitors and 3 checks`);
+console.log(`Seeded ${results[0].n} monitors with 30 days of checks`);
 await dispose();

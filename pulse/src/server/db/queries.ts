@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { checks, incidents, monitors } from "./schema";
 
@@ -51,4 +51,13 @@ export async function listIncidents() {
     .from(incidents)
     .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
     .orderBy(desc(incidents.startedAt));
+}
+
+/** Every check since the given UTC timestamp, for uptime figures and sparklines. */
+export async function listChecksSince(sinceUtc: string) {
+  return getDb()
+    .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
+    .from(checks)
+    .where(gt(checks.at, sinceUtc))
+    .orderBy(checks.at);
 }
