@@ -76,3 +76,26 @@ export const rollups = sqliteTable(
   },
   (t) => [uniqueIndex("rollups_monitor_hour").on(t.monitorId, t.hour)],
 );
+
+export const statusPages = sqliteTable("status_pages", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  accent: text("accent").notNull().default("#f43f5e"),
+  logoKey: text("logo_key"),
+  introMd: text("intro_md").notNull().default(""),
+  ...timestamps,
+});
+
+export const statusPageMonitors = sqliteTable(
+  "status_page_monitors",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    statusPageId: integer("status_page_id").notNull().references(() => statusPages.id),
+    monitorId: integer("monitor_id").notNull().references(() => monitors.id),
+    displayName: text("display_name").notNull(),
+    position: integer("position").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("status_page_monitors_page_monitor").on(t.statusPageId, t.monitorId)],
+);

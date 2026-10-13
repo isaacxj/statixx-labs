@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./index";
-import { alertRecipients, checks, incidents, monitors, rollups } from "./schema";
+import { alertRecipients, checks, incidents, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -42,7 +42,7 @@ export async function setMonitorPaused(id: number, paused: boolean) {
 
 export async function deleteMonitor(id: number) {
   const db = getDb();
-  await db.batch([db.delete(incidents).where(eq(incidents.monitorId, id)), db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
+  await db.batch([db.delete(statusPageMonitors).where(eq(statusPageMonitors.monitorId, id)), db.delete(incidents).where(eq(incidents.monitorId, id)), db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
 }
 
 export async function listIncidents() {
@@ -107,4 +107,56 @@ export async function getRetentionStats() {
   const [raw] = await db.select({ count: sql<number>`count(*)`, oldest: sql<string | null>`min(${checks.at})` }).from(checks);
   const [hourly] = await db.select({ count: sql<number>`count(*)`, oldest: sql<string | null>`min(${rollups.hour})` }).from(rollups);
   return { rawChecks: raw.count, oldestRaw: raw.oldest, rollups: hourly.count, oldestRollup: hourly.oldest };
+}
+
+export async function listStatusPages() {
+  return getDb()
+    .select({ page: statusPages, monitorCount: sql<number>`(select count(*) from status_page_monitors spm where spm.status_page_id = status_pages.id)` })
+    .from(statusPages)
+    .orderBy(statusPages.title);
+}
+
+export async function getStatusPage(id: number) {
+  const db = getDb();
+  const [page] = await db.select().from(statusPages).where(eq(statusPages.id, id));
+  if (!page) return null;
+  const items = await db
+    .select({ monitorId: statusPageMonitors.monitorId, displayName: statusPageMonitors.displayName })
+    .from(statusPageMonitors)
+    .where(eq(statusPageMonitors.statusPageId, id))
+    .orderBy(statusPageMonitors.position);
+  return { page, items };
+}
+
+export type StatusPageValues = Pick<typeof statusPages.$inferInsert, "slug" | "title" | "accent" | "introMd">;
+
+/** Returns null when the slug is already taken. */
+export async function createStatusPage(values: StatusPageValues) {
+  const rows = await getDb().insert(statusPages).values(values).onConflictDoNothing().returning({ id: statusPages.id });
+  return rows[0]?.id ?? null;
+}
+
+/** Returns false when another page already uses the slug. */
+export async function updateStatusPage(id: number, values: StatusPageValues) {
+  const db = getDb();
+  const [clash] = await db.select({ id: statusPages.id }).from(statusPages).where(and(eq(statusPages.slug, values.slug), sql`${statusPages.id} != ${id}`));
+  if (clash) return false;
+  await db.update(statusPages).set({ ...values, updatedAt: sql`datetime('now')` }).where(eq(statusPages.id, id));
+  return true;
+}
+
+export async function deleteStatusPage(id: number) {
+  const db = getDb();
+  await db.batch([
+    db.delete(statusPageMonitors).where(eq(statusPageMonitors.statusPageId, id)),
+    db.update(incidents).set({ statusPageId: null }).where(eq(incidents.statusPageId, id)),
+    db.delete(statusPages).where(eq(statusPages.id, id)),
+  ]);
+}
+
+/** Replaces the page's monitors; array order is the display order. */
+export async function setStatusPageMonitors(id: number, items: { monitorId: number; displayName: string }[]) {
+  const db = getDb();
+  const inserts = items.map((it, position) => db.insert(statusPageMonitors).values({ statusPageId: id, monitorId: it.monitorId, displayName: it.displayName, position }));
+  await db.batch([db.delete(statusPageMonitors).where(eq(statusPageMonitors.statusPageId, id)), ...inserts]);
 }

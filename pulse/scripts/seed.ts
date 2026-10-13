@@ -4,6 +4,8 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ persist: {
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM status_page_monitors"),
+  db.prepare("DELETE FROM status_pages"),
   db.prepare("DELETE FROM rollups"),
   db.prepare("DELETE FROM incidents"),
   db.prepare("DELETE FROM checks"),
@@ -28,6 +30,8 @@ await db.batch([
       "SELECT 2, datetime('now', '-' || (i * 15) || ' minutes'), CASE WHEN i < 2 THEN 0 ELSE 1 END, CASE WHEN i < 2 THEN NULL ELSE 200 END, " +
       "CASE WHEN i < 2 THEN NULL ELSE 90 + (i * 53) % 60 END, CASE WHEN i < 2 THEN 'Timed out after 5000 ms' ELSE NULL END FROM n",
   ),
+  db.prepare("INSERT INTO status_pages (id, slug, title, accent, intro_md) VALUES (1, 'northwind-dental', 'Northwind Dental status', '#0ea5e9', 'Live status for the Northwind Dental website and booking system.')"),
+  db.prepare("INSERT INTO status_page_monitors (status_page_id, monitor_id, display_name, position) VALUES (1, 1, 'Website', 0), (1, 2, 'Online booking', 1)"),
   db.prepare("UPDATE monitors SET last_checked_at = datetime('now') WHERE id IN (1, 2)"),
   db.prepare(
     "INSERT INTO incidents (monitor_id, title, status, started_at, resolved_at, auto) VALUES " +

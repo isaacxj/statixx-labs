@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { parseMonitorForm, type MonitorFormResult } from "@/lib/monitor-form";
 import { parseRecipient } from "@/lib/alerts";
-import { addAlertRecipient, createMonitor, deleteMonitor, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
+import { cleanPageMonitors, parseStatusPageForm, type StatusPageErrors } from "@/lib/status-page-form";
+import { addAlertRecipient, createMonitor, createStatusPage, deleteMonitor, deleteStatusPage, getStatusPage, listMonitors, setStatusPageMonitors, updateStatusPage, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
 
 export type SaveState = { ok: boolean; message?: string; errors?: Extract<MonitorFormResult, { ok: false }>["errors"] } | null;
 
@@ -45,4 +46,37 @@ export async function toggleRecipient(id: number, active: boolean) {
 export async function deleteRecipient(id: number) {
   await removeAlertRecipient(id);
   revalidatePath("/settings");
+}
+
+export type StatusPageState = { ok: boolean; message?: string; errors?: StatusPageErrors; id?: number } | null;
+
+export async function saveStatusPage(id: number | null, _prev: StatusPageState, form: FormData): Promise<StatusPageState> {
+  const parsed = parseStatusPageForm(form);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  const taken = { ok: false, errors: { slug: `"${parsed.value.slug}" is already used by another page.` } };
+  if (id === null) {
+    const newId = await createStatusPage(parsed.value);
+    if (newId === null) return taken;
+    revalidatePath("/status-pages");
+    return { ok: true, id: newId, message: `Created ${parsed.value.title}` };
+  }
+  if (!(await updateStatusPage(id, parsed.value))) return taken;
+  revalidatePath("/status-pages");
+  revalidatePath(`/status-pages/${id}`);
+  return { ok: true, id, message: `Saved ${parsed.value.title}` };
+}
+
+export async function saveStatusPageMonitors(id: number, items: { monitorId: number; displayName: string }[]) {
+  if (!(await getStatusPage(id))) return { ok: false as const, message: "That page no longer exists." };
+  const names = new Map((await listMonitors()).map((m) => [m.id, m.name]));
+  const cleaned = cleanPageMonitors(items, names);
+  await setStatusPageMonitors(id, cleaned);
+  revalidatePath("/status-pages");
+  revalidatePath(`/status-pages/${id}`);
+  return { ok: true as const, message: cleaned.length === 1 ? "Showing 1 monitor" : `Showing ${cleaned.length} monitors` };
+}
+
+export async function removeStatusPage(id: number) {
+  await deleteStatusPage(id);
+  revalidatePath("/status-pages");
 }
