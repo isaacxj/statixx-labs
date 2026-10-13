@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
+  "send_email": [{ "name": "ALERT_EMAIL" }],
+  "vars": { "ALERT_FROM": "pulse@pulse.example.com" },
   "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     {

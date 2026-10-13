@@ -50,5 +50,14 @@ export const incidents = sqliteTable("incidents", {
   startedAt: text("started_at").notNull(),
   resolvedAt: text("resolved_at"),
   auto: integer("auto", { mode: "boolean" }).notNull().default(true),
+  downAlertedAt: text("down_alerted_at"),
+  recoveredAlertedAt: text("recovered_alerted_at"),
+  ...timestamps,
+});
+
+export const alertRecipients = sqliteTable("alert_recipients", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull().unique(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...timestamps,
 });

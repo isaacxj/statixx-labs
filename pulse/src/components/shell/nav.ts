@@ -1,10 +1,11 @@
-import { Activity, AlertTriangle, Palette, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, Palette, Settings, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Monitors", icon: Activity },
   { href: "/incidents", label: "Incidents", icon: AlertTriangle },
+  { href: "/settings", label: "Settings", icon: Settings },
   { href: "/design", label: "Design", icon: Palette },
 ];
 

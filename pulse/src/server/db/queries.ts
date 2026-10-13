@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./index";
-import { checks, incidents, monitors } from "./schema";
+import { alertRecipients, checks, incidents, monitors } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -82,4 +82,22 @@ export async function listMonitorIncidents(monitorId: number) {
 
 export async function listMonitorCheckLog(monitorId: number, limit = 20) {
   return getDb().select().from(checks).where(eq(checks.monitorId, monitorId)).orderBy(desc(checks.at)).limit(limit);
+}
+
+export async function listAlertRecipients() {
+  return getDb().select().from(alertRecipients).orderBy(alertRecipients.email);
+}
+
+/** Returns false when the address is already a recipient. */
+export async function addAlertRecipient(email: string) {
+  const rows = await getDb().insert(alertRecipients).values({ email }).onConflictDoNothing().returning({ id: alertRecipients.id });
+  return rows.length > 0;
+}
+
+export async function setAlertRecipientActive(id: number, active: boolean) {
+  await getDb().update(alertRecipients).set({ active, updatedAt: sql`datetime('now')` }).where(eq(alertRecipients.id, id));
+}
+
+export async function removeAlertRecipient(id: number) {
+  await getDb().delete(alertRecipients).where(eq(alertRecipients.id, id));
 }

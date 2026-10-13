@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { parseMonitorForm, type MonitorFormResult } from "@/lib/monitor-form";
-import { createMonitor, deleteMonitor, setMonitorPaused, updateMonitor } from "@/server/db/queries";
+import { parseRecipient } from "@/lib/alerts";
+import { addAlertRecipient, createMonitor, deleteMonitor, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
 
 export type SaveState = { ok: boolean; message?: string; errors?: Extract<MonitorFormResult, { ok: false }>["errors"] } | null;
 
@@ -23,4 +24,25 @@ export async function togglePause(id: number, paused: boolean) {
 export async function removeMonitor(id: number) {
   await deleteMonitor(id);
   revalidatePath("/");
+}
+
+export type RecipientState = { ok: boolean; message?: string; error?: string } | null;
+
+export async function addRecipient(_prev: RecipientState, form: FormData): Promise<RecipientState> {
+  const parsed = parseRecipient(String(form.get("email") ?? ""));
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const added = await addAlertRecipient(parsed.email);
+  if (!added) return { ok: false, error: `${parsed.email} already gets alerts.` };
+  revalidatePath("/settings");
+  return { ok: true, message: `Alerts will go to ${parsed.email}` };
+}
+
+export async function toggleRecipient(id: number, active: boolean) {
+  await setAlertRecipientActive(id, active);
+  revalidatePath("/settings");
+}
+
+export async function deleteRecipient(id: number) {
+  await removeAlertRecipient(id);
+  revalidatePath("/settings");
 }
