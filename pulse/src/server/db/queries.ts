@@ -1,6 +1,6 @@
 import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./index";
-import { checks, monitors } from "./schema";
+import { checks, incidents, monitors } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -42,5 +42,13 @@ export async function setMonitorPaused(id: number, paused: boolean) {
 
 export async function deleteMonitor(id: number) {
   const db = getDb();
-  await db.batch([db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
+  await db.batch([db.delete(incidents).where(eq(incidents.monitorId, id)), db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
+}
+
+export async function listIncidents() {
+  return getDb()
+    .select({ incident: incidents, monitorName: monitors.name, client: monitors.client })
+    .from(incidents)
+    .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
+    .orderBy(desc(incidents.startedAt));
 }

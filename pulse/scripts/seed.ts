@@ -4,6 +4,7 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ persist: {
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM incidents"),
   db.prepare("DELETE FROM checks"),
   db.prepare("DELETE FROM monitors"),
   db.prepare(
@@ -17,6 +18,11 @@ await db.batch([
       "(1, '2026-10-12 18:00:00', 1, 200, 182, NULL)," +
       "(2, '2026-10-12 17:59:00', 0, 503, 640, 'Unexpected status 503')," +
       "(2, '2026-10-12 18:00:00', 0, NULL, NULL, 'Timed out after 5000 ms')",
+  ),
+  db.prepare(
+    "INSERT INTO incidents (monitor_id, title, status, started_at, resolved_at, auto) VALUES " +
+      "(2, 'Booking API is down: Timed out after 5000 ms', 'investigating', '2026-10-12 18:00:00', NULL, 1)," +
+      "(1, 'Marketing site is down: Unexpected status 502', 'resolved', '2026-10-10 14:03:00', '2026-10-10 14:21:00', 1)",
   ),
 ]);
 

@@ -3,6 +3,8 @@ import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const MONITOR_STATUSES = ["pending", "up", "down", "paused"] as const;
 export type MonitorStatus = (typeof MONITOR_STATUSES)[number];
+export const INCIDENT_STATUSES = ["investigating", "identified", "monitoring", "resolved"] as const;
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
 export const HTTP_METHODS = ["GET", "HEAD", "POST"] as const;
 
 const timestamps = {
@@ -36,5 +38,17 @@ export const checks = sqliteTable("checks", {
   statusCode: integer("status_code"),
   latencyMs: integer("latency_ms"),
   error: text("error"),
+  ...timestamps,
+});
+
+export const incidents = sqliteTable("incidents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  monitorId: integer("monitor_id").notNull().references(() => monitors.id),
+  statusPageId: integer("status_page_id"),
+  title: text("title").notNull(),
+  status: text("status", { enum: INCIDENT_STATUSES }).notNull().default("investigating"),
+  startedAt: text("started_at").notNull(),
+  resolvedAt: text("resolved_at"),
+  auto: integer("auto", { mode: "boolean" }).notNull().default(true),
   ...timestamps,
 });

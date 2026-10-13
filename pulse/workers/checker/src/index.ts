@@ -1,8 +1,9 @@
 import { drizzle } from "drizzle-orm/d1";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { checks, monitors } from "../../../src/server/db/schema";
+import { checks, incidents, monitors } from "../../../src/server/db/schema";
 import { nextCheckTime, runCheck, toSqlTime } from "../../../src/lib/check";
+import { incidentTitle, nextMonitorState } from "../../../src/lib/status";
 
 type Env = { DB: D1Database };
 
@@ -18,13 +19,33 @@ export async function runDueChecks(env: Env, nowMs = Date.now()) {
   if (results.length === 0) return 0;
 
   const at = toSqlTime(nowMs);
-  const statements = results.flatMap(({ m, r }): BatchItem<"sqlite">[] => [
-    db.insert(checks).values({ monitorId: m.id, at, ok: r.ok, statusCode: r.statusCode, latencyMs: r.latencyMs, error: r.error }),
-    db
-      .update(monitors)
-      .set({ lastCheckedAt: at, nextCheckAt: nextCheckTime(nowMs, m.intervalSec), updatedAt: sql`datetime('now')` })
-      .where(eq(monitors.id, m.id)),
-  ]);
+  const statements = results.flatMap(({ m, r }): BatchItem<"sqlite">[] => {
+    const next = nextMonitorState(m, r.ok);
+    const out: BatchItem<"sqlite">[] = [
+      db.insert(checks).values({ monitorId: m.id, at, ok: r.ok, statusCode: r.statusCode, latencyMs: r.latencyMs, error: r.error }),
+      db
+        .update(monitors)
+        .set({
+          status: next.status,
+          consecutiveFailures: next.consecutiveFailures,
+          lastCheckedAt: at,
+          nextCheckAt: nextCheckTime(nowMs, m.intervalSec),
+          updatedAt: sql`datetime('now')`,
+        })
+        .where(eq(monitors.id, m.id)),
+    ];
+    if (next.incident === "open") {
+      out.push(db.insert(incidents).values({ monitorId: m.id, title: incidentTitle(m.name, r.error), startedAt: at }));
+    } else if (next.incident === "resolve") {
+      out.push(
+        db
+          .update(incidents)
+          .set({ status: "resolved", resolvedAt: at, updatedAt: sql`datetime('now')` })
+          .where(and(eq(incidents.monitorId, m.id), isNull(incidents.resolvedAt))),
+      );
+    }
+    return out;
+  });
   await db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
   return results.length;
 }
