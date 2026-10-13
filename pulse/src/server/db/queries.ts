@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./index";
-import { alertRecipients, checks, incidents, monitors } from "./schema";
+import { alertRecipients, checks, incidents, monitors, rollups } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -100,4 +100,11 @@ export async function setAlertRecipientActive(id: number, active: boolean) {
 
 export async function removeAlertRecipient(id: number) {
   await getDb().delete(alertRecipients).where(eq(alertRecipients.id, id));
+}
+
+export async function getRetentionStats() {
+  const db = getDb();
+  const [raw] = await db.select({ count: sql<number>`count(*)`, oldest: sql<string | null>`min(${checks.at})` }).from(checks);
+  const [hourly] = await db.select({ count: sql<number>`count(*)`, oldest: sql<string | null>`min(${rollups.hour})` }).from(rollups);
+  return { rawChecks: raw.count, oldestRaw: raw.oldest, rollups: hourly.count, oldestRollup: hourly.oldest };
 }

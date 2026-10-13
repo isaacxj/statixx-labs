@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const MONITOR_STATUSES = ["pending", "up", "down", "paused"] as const;
 export type MonitorStatus = (typeof MONITOR_STATUSES)[number];
@@ -61,3 +61,18 @@ export const alertRecipients = sqliteTable("alert_recipients", {
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   ...timestamps,
 });
+
+export const rollups = sqliteTable(
+  "rollups",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    monitorId: integer("monitor_id").notNull().references(() => monitors.id),
+    hour: text("hour").notNull(),
+    checks: integer("checks").notNull(),
+    failures: integer("failures").notNull(),
+    avgLatencyMs: integer("avg_latency_ms"),
+    maxLatencyMs: integer("max_latency_ms"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("rollups_monitor_hour").on(t.monitorId, t.hour)],
+);

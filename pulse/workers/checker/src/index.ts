@@ -4,6 +4,7 @@ import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { alertRecipients, checks, incidents, monitors } from "../../../src/server/db/schema";
 import { nextCheckTime, runCheck, toSqlTime } from "../../../src/lib/check";
+import { hourStart, rawCutoff, rollupCutoff } from "../../../src/lib/retention";
 import { alertContent, rawEmail, type AlertKind } from "../../../src/lib/alerts";
 import { incidentTitle, nextMonitorState } from "../../../src/lib/status";
 
@@ -96,9 +97,27 @@ export async function sendPendingAlerts(env: Env, nowMs = Date.now()) {
   return sent;
 }
 
+// Summarizes every completed hour of raw checks into one rollup row per monitor (idempotent upsert),
+// then prunes raw checks past 7 days and rollups past 400. Rolling up first means pruned hours survive.
+export async function rollupAndPrune(env: Env, nowMs = Date.now()) {
+  await env.DB.batch([
+    env.DB.prepare(
+      `insert into rollups (monitor_id, hour, checks, failures, avg_latency_ms, max_latency_ms)
+       select monitor_id, strftime('%Y-%m-%d %H:00:00', at) as hour, count(*), sum(case when ok = 0 then 1 else 0 end),
+         cast(round(avg(latency_ms)) as integer), max(latency_ms)
+       from checks where at < ?1 group by monitor_id, hour
+       on conflict (monitor_id, hour) do update set checks = excluded.checks, failures = excluded.failures,
+         avg_latency_ms = excluded.avg_latency_ms, max_latency_ms = excluded.max_latency_ms, updated_at = datetime('now')`,
+    ).bind(hourStart(nowMs)),
+    env.DB.prepare("delete from checks where at < ?1").bind(rawCutoff(nowMs)),
+    env.DB.prepare("delete from rollups where hour < ?1").bind(rollupCutoff(nowMs)),
+  ]);
+}
+
 export default {
   async scheduled(_controller: ScheduledController, env: Env) {
     await runDueChecks(env);
     await sendPendingAlerts(env);
+    await rollupAndPrune(env);
   },
 } satisfies ExportedHandler<Env>;
