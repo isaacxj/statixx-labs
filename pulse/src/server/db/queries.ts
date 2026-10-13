@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { alertRecipients, checks, incidents, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
 
@@ -159,4 +159,28 @@ export async function setStatusPageMonitors(id: number, items: { monitorId: numb
   const db = getDb();
   const inserts = items.map((it, position) => db.insert(statusPageMonitors).values({ statusPageId: id, monitorId: it.monitorId, displayName: it.displayName, position }));
   await db.batch([db.delete(statusPageMonitors).where(eq(statusPageMonitors.statusPageId, id)), ...inserts]);
+}
+
+/** Everything the public status page shows, found by slug. Only monitors chosen for the page are returned. */
+export async function getPublicStatusPage(slug: string, sinceUtc: string) {
+  const db = getDb();
+  const [page] = await db.select().from(statusPages).where(eq(statusPages.slug, slug));
+  if (!page) return null;
+  const components = await db
+    .select({ monitorId: monitors.id, displayName: statusPageMonitors.displayName, status: monitors.status, lastCheckedAt: monitors.lastCheckedAt })
+    .from(statusPageMonitors)
+    .innerJoin(monitors, eq(statusPageMonitors.monitorId, monitors.id))
+    .where(eq(statusPageMonitors.statusPageId, page.id))
+    .orderBy(statusPageMonitors.position);
+  const ids = components.map((c) => c.monitorId);
+  if (ids.length === 0) return { page, components, checks: [], incidents: [] };
+  const [pageChecks, pageIncidents] = await Promise.all([
+    db
+      .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
+      .from(checks)
+      .where(and(inArray(checks.monitorId, ids), gt(checks.at, sinceUtc)))
+      .orderBy(checks.at),
+    db.select().from(incidents).where(inArray(incidents.monitorId, ids)).orderBy(desc(incidents.startedAt)),
+  ]);
+  return { page, components, checks: pageChecks, incidents: pageIncidents };
 }
