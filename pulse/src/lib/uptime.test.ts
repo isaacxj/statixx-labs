@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUptime, latencySeries, sparklinePath, uptimePercent, type CheckPoint } from "./uptime";
+import { dailyUptime, formatUptime, latencyBuckets, latencySeries, sparklinePath, uptimePercent, type CheckPoint } from "./uptime";
 
 const now = Date.parse("2026-10-12T18:00:00Z");
 const pt = (at: string, ok: boolean, latencyMs: number | null = 100): CheckPoint => ({ monitorId: 1, at, ok, latencyMs });
@@ -32,4 +32,25 @@ describe("latencySeries", () => {
 describe("sparklinePath", () => {
   it("needs two points", () => expect(sparklinePath([5], 100, 20)).toBe(""));
   it("maps min to the bottom and max to the top", () => expect(sparklinePath([1, 3], 100, 20)).toBe("M0.0 20.0 L100.0 0.0"));
+});
+
+describe("latencyBuckets", () => {
+  it("averages successful latency and counts failures per bucket", () => {
+    const pts = [pt("2026-10-12 17:10:00", true, 100), pt("2026-10-12 17:20:00", true, 300), pt("2026-10-12 17:40:00", false, null)];
+    const b = latencyBuckets(pts, now, 3600_000, 2);
+    expect(b[0]).toMatchObject({ avgLatencyMs: 200, checks: 2, failures: 0 });
+    expect(b[1]).toMatchObject({ avgLatencyMs: null, checks: 1, failures: 1 });
+  });
+});
+
+describe("dailyUptime", () => {
+  it("returns one entry per day, oldest first, with null for days without checks", () => {
+    const pts = [pt("2026-10-12 10:00:00", true), pt("2026-10-12 11:00:00", false), pt("2026-10-10 09:00:00", true)];
+    const d = dailyUptime(pts, now, 3);
+    expect(d.map((x) => x.day)).toEqual(["2026-10-10", "2026-10-11", "2026-10-12"]);
+    expect(d.map((x) => x.pct)).toEqual([100, null, 50]);
+  });
+  it("ignores checks older than the window", () => {
+    expect(dailyUptime([pt("2026-10-01 10:00:00", true)], now, 3).every((x) => x.pct === null)).toBe(true);
+  });
 });

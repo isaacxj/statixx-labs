@@ -45,3 +45,48 @@ export function sparklinePath(values: number[], width: number, height: number): 
 export function nowMs(): number {
   return Date.now();
 }
+
+export type Bucket = { start: number; avgLatencyMs: number | null; checks: number; failures: number };
+
+/** Splits the window into equal buckets with average latency of successful checks and a failure count. */
+export function latencyBuckets(points: CheckPoint[], now: number, windowMs: number, count: number): Bucket[] {
+  const size = windowMs / count;
+  const from = now - windowMs;
+  const sums = Array.from({ length: count }, () => ({ sum: 0, n: 0, checks: 0, failures: 0 }));
+  for (const p of points) {
+    const t = parseUtc(p.at);
+    if (t <= from || t > now) continue;
+    const b = sums[Math.min(count - 1, Math.floor((t - from) / size))];
+    b.checks++;
+    if (!p.ok) b.failures++;
+    else if (p.latencyMs !== null) {
+      b.sum += p.latencyMs;
+      b.n++;
+    }
+  }
+  return sums.map((b, i) => ({ start: from + i * size, avgLatencyMs: b.n ? Math.round(b.sum / b.n) : null, checks: b.checks, failures: b.failures }));
+}
+
+export type DayUptime = { day: string; pct: number | null; checks: number };
+
+/** Uptime per UTC day for the last `days` days, oldest first; the last entry is today. */
+export function dailyUptime(points: CheckPoint[], now: number, days: number): DayUptime[] {
+  const dayMs = 24 * 3600_000;
+  const today = Math.floor(now / dayMs);
+  const stats = new Map<number, { ok: number; n: number }>();
+  for (const p of points) {
+    const t = parseUtc(p.at);
+    if (t > now) continue;
+    const d = Math.floor(t / dayMs);
+    if (d <= today - days) continue;
+    const s = stats.get(d) ?? { ok: 0, n: 0 };
+    s.n++;
+    if (p.ok) s.ok++;
+    stats.set(d, s);
+  }
+  return Array.from({ length: days }, (_, i) => {
+    const d = today - days + 1 + i;
+    const s = stats.get(d);
+    return { day: new Date(d * dayMs).toISOString().slice(0, 10), pct: s ? (s.ok / s.n) * 100 : null, checks: s?.n ?? 0 };
+  });
+}

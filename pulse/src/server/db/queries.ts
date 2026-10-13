@@ -1,4 +1,4 @@
-import { desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { checks, incidents, monitors } from "./schema";
 
@@ -60,4 +60,26 @@ export async function listChecksSince(sinceUtc: string) {
     .from(checks)
     .where(gt(checks.at, sinceUtc))
     .orderBy(checks.at);
+}
+
+export async function getMonitor(id: number) {
+  const [row] = await getDb().select().from(monitors).where(eq(monitors.id, id));
+  return row ?? null;
+}
+
+/** Checks for one monitor since the given UTC timestamp, oldest first. */
+export async function listMonitorChecksSince(monitorId: number, sinceUtc: string) {
+  return getDb()
+    .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
+    .from(checks)
+    .where(and(eq(checks.monitorId, monitorId), gt(checks.at, sinceUtc)))
+    .orderBy(checks.at);
+}
+
+export async function listMonitorIncidents(monitorId: number) {
+  return getDb().select().from(incidents).where(eq(incidents.monitorId, monitorId)).orderBy(desc(incidents.startedAt));
+}
+
+export async function listMonitorCheckLog(monitorId: number, limit = 20) {
+  return getDb().select().from(checks).where(eq(checks.monitorId, monitorId)).orderBy(desc(checks.at)).limit(limit);
 }

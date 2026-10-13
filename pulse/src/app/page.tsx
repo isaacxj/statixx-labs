@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MonitorActions } from "@/components/monitor-actions";
 import { MonitorFilters } from "@/components/monitor-filters";
 import { MonitorSheet } from "@/components/monitor-sheet";
@@ -67,7 +68,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ s
                 <div className="min-w-0 lg:flex-1">
                   <div className="flex items-center gap-3">
                     <StatusBadge status={m.status} />
-                    <p className="truncate font-medium">{m.name}</p>
+                    <Link href={`/monitors/${m.id}`} className="hover:underline focus-visible:ring-ring truncate rounded-sm font-medium outline-none focus-visible:ring-2">{m.name}</Link>
                   </div>
                   <p className="text-muted-foreground truncate text-sm">{m.client ? `${m.client} · ` : ""}{m.url}</p>
                 </div>

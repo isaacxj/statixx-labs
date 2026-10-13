@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -7,8 +8,9 @@ import { removeMonitor, togglePause } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { MonitorSheet, type MonitorFormValues } from "./monitor-sheet";
 
-export function MonitorActions({ monitor, paused }: { monitor: MonitorFormValues; paused: boolean }) {
+export function MonitorActions({ monitor, paused, afterDelete }: { monitor: MonitorFormValues; paused: boolean; afterDelete?: string }) {
   const [pending, start] = useTransition();
+  const router = useRouter();
   return (
     <div className="flex items-center gap-1">
       <MonitorSheet
@@ -35,7 +37,7 @@ export function MonitorActions({ monitor, paused }: { monitor: MonitorFormValues
         aria-label={`Delete ${monitor.name}`}
         onClick={() => {
           if (!confirm(`Delete ${monitor.name} and its check history?`)) return;
-          start(async () => { await removeMonitor(monitor.id); toast.success(`Deleted ${monitor.name}`); });
+          start(async () => { await removeMonitor(monitor.id); toast.success(`Deleted ${monitor.name}`); if (afterDelete) router.push(afterDelete); });
         }}
       >
         <Trash2 />
