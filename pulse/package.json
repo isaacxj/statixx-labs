@@ -15,7 +15,9 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply pulse --local",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "checker:dev": "wrangler dev -c workers/checker/wrangler.jsonc --test-scheduled --persist-to .wrangler/state",
+    "checker:serve": "node scripts/test-server.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
