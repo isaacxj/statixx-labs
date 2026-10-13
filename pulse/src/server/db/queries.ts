@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { checks, monitors } from "./schema";
 
@@ -13,4 +13,34 @@ export async function listRecentChecks(monitorId: number, limit = 1) {
 export async function listMonitorsWithLatestCheck() {
   const rows = await listMonitors();
   return Promise.all(rows.map(async (m) => ({ ...m, latest: (await listRecentChecks(m.id))[0] ?? null })));
+}
+
+export type MonitorValues = Pick<typeof monitors.$inferInsert, "name" | "client" | "url" | "method" | "intervalSec" | "timeoutMs" | "expectedStatus" | "keyword">;
+
+export async function createMonitor(values: MonitorValues) {
+  const [row] = await getDb()
+    .insert(monitors)
+    .values({ ...values, status: "pending", nextCheckAt: sql`datetime('now')` })
+    .returning({ id: monitors.id });
+  return row.id;
+}
+
+export async function updateMonitor(id: number, values: MonitorValues) {
+  await getDb().update(monitors).set({ ...values, updatedAt: sql`datetime('now')` }).where(eq(monitors.id, id));
+}
+
+export async function setMonitorPaused(id: number, paused: boolean) {
+  await getDb()
+    .update(monitors)
+    .set(
+      paused
+        ? { active: false, status: "paused", updatedAt: sql`datetime('now')` }
+        : { active: true, status: "pending", consecutiveFailures: 0, nextCheckAt: sql`datetime('now')`, updatedAt: sql`datetime('now')` },
+    )
+    .where(eq(monitors.id, id));
+}
+
+export async function deleteMonitor(id: number) {
+  const db = getDb();
+  await db.batch([db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
 }
