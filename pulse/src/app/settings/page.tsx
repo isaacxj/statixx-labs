@@ -1,12 +1,20 @@
 import { RAW_RETENTION_DAYS, ROLLUP_RETENTION_DAYS } from "@/lib/retention";
 import { AppShell } from "@/components/shell/app-shell";
 import { AddRecipientForm, RecipientList } from "@/components/recipients";
-import { getRetentionStats, listAlertRecipients } from "@/server/db/queries";
+import { MaintenanceList, MaintenanceForm } from "@/components/maintenance";
+import { nowMs } from "@/lib/uptime";
+import { getRetentionStats, listAlertRecipients, listMaintenanceWindows, listMonitors } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const [recipients, stats] = await Promise.all([listAlertRecipients(), getRetentionStats()]);
+  const now = nowMs();
+  const [recipients, stats, windows, monitors] = await Promise.all([
+    listAlertRecipients(),
+    getRetentionStats(),
+    listMaintenanceWindows(new Date(now).toISOString().slice(0, 19).replace("T", " ")),
+    listMonitors(),
+  ]);
   return (
     <AppShell title="Settings">
       <section aria-labelledby="alerts-heading" className="flex max-w-2xl flex-col gap-4">
@@ -18,6 +26,17 @@ export default async function SettingsPage() {
         </div>
         <AddRecipientForm />
         <RecipientList recipients={recipients} />
+      </section>
+      <section aria-labelledby="maintenance-heading" className="mt-10 flex max-w-2xl flex-col gap-4">
+        <div>
+          <h2 id="maintenance-heading" className="text-xl font-semibold">Maintenance windows</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            While a window is open the monitor is still checked, but failures send no alert, open no incident, and don&apos;t lower
+            uptime. Times are Central.
+          </p>
+        </div>
+        <MaintenanceForm monitors={monitors.map((m) => ({ id: m.id, name: m.name }))} />
+        <MaintenanceList rows={windows.map((r) => ({ id: r.window.id, monitorName: r.monitorName, startsAt: r.window.startsAt, endsAt: r.window.endsAt, note: r.window.note }))} now={now} />
       </section>
       <section aria-labelledby="retention-heading" className="mt-10 flex max-w-2xl flex-col gap-4">
         <div>

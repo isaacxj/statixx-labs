@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import type { IncidentInput, UpdateInput } from "@/lib/incident-form";
 import { getDb } from "./index";
-import { alertRecipients, checks, incidents, incidentUpdates, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
+import { alertRecipients, checks, incidents, incidentUpdates, maintenanceWindows, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -43,7 +43,7 @@ export async function setMonitorPaused(id: number, paused: boolean) {
 
 export async function deleteMonitor(id: number) {
   const db = getDb();
-  await db.batch([db.delete(statusPageMonitors).where(eq(statusPageMonitors.monitorId, id)), db.delete(incidents).where(eq(incidents.monitorId, id)), db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
+  await db.batch([db.delete(maintenanceWindows).where(eq(maintenanceWindows.monitorId, id)), db.delete(statusPageMonitors).where(eq(statusPageMonitors.monitorId, id)), db.delete(incidents).where(eq(incidents.monitorId, id)), db.delete(checks).where(eq(checks.monitorId, id)), db.delete(monitors).where(eq(monitors.id, id))]);
 }
 
 export async function listIncidents() {
@@ -59,7 +59,7 @@ export async function listChecksSince(sinceUtc: string) {
   return getDb()
     .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
     .from(checks)
-    .where(gt(checks.at, sinceUtc))
+    .where(and(gt(checks.at, sinceUtc), eq(checks.maintenance, false)))
     .orderBy(checks.at);
 }
 
@@ -73,7 +73,7 @@ export async function listMonitorChecksSince(monitorId: number, sinceUtc: string
   return getDb()
     .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
     .from(checks)
-    .where(and(eq(checks.monitorId, monitorId), gt(checks.at, sinceUtc)))
+    .where(and(eq(checks.monitorId, monitorId), gt(checks.at, sinceUtc), eq(checks.maintenance, false)))
     .orderBy(checks.at);
 }
 
@@ -163,7 +163,7 @@ export async function setStatusPageMonitors(id: number, items: { monitorId: numb
 }
 
 /** Everything the public status page shows, found by slug. Only monitors chosen for the page are returned. */
-export async function getPublicStatusPage(slug: string, sinceUtc: string) {
+export async function getPublicStatusPage(slug: string, sinceUtc: string, nowUtc: string) {
   const db = getDb();
   const [page] = await db.select().from(statusPages).where(eq(statusPages.slug, slug));
   if (!page) return null;
@@ -174,12 +174,12 @@ export async function getPublicStatusPage(slug: string, sinceUtc: string) {
     .where(eq(statusPageMonitors.statusPageId, page.id))
     .orderBy(statusPageMonitors.position);
   const ids = components.map((c) => c.monitorId);
-  if (ids.length === 0) return { page, components, checks: [], incidents: [], updates: [] };
-  const [pageChecks, pageIncidents] = await Promise.all([
+  if (ids.length === 0) return { page, components, checks: [], incidents: [], updates: [], windows: [] };
+  const [pageChecks, pageIncidents, windows] = await Promise.all([
     db
       .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
       .from(checks)
-      .where(and(inArray(checks.monitorId, ids), gt(checks.at, sinceUtc)))
+      .where(and(inArray(checks.monitorId, ids), gt(checks.at, sinceUtc), eq(checks.maintenance, false)))
       .orderBy(checks.at),
     // Automatic incidents come from the page's monitors; manual ones only from the page they were posted on.
     db
@@ -187,10 +187,16 @@ export async function getPublicStatusPage(slug: string, sinceUtc: string) {
       .from(incidents)
       .where(and(inArray(incidents.monitorId, ids), or(eq(incidents.auto, true), eq(incidents.statusPageId, page.id))))
       .orderBy(desc(incidents.startedAt)),
+    // Windows that haven't ended yet, for this page's monitors only.
+    db
+      .select({ monitorId: maintenanceWindows.monitorId, startsAt: maintenanceWindows.startsAt, endsAt: maintenanceWindows.endsAt, note: maintenanceWindows.note })
+      .from(maintenanceWindows)
+      .where(and(inArray(maintenanceWindows.monitorId, ids), gt(maintenanceWindows.endsAt, nowUtc)))
+      .orderBy(maintenanceWindows.startsAt),
   ]);
   const manualIds = pageIncidents.filter((i) => !i.auto).map((i) => i.id);
   const updates = manualIds.length === 0 ? [] : await db.select().from(incidentUpdates).where(inArray(incidentUpdates.incidentId, manualIds)).orderBy(desc(incidentUpdates.at), desc(incidentUpdates.id));
-  return { page, components, checks: pageChecks, incidents: pageIncidents, updates };
+  return { page, components, checks: pageChecks, incidents: pageIncidents, updates, windows };
 }
 
 export async function getIncident(id: number) {
@@ -237,4 +243,22 @@ export async function addIncidentUpdate(incidentId: number, input: UpdateInput) 
       .where(eq(incidents.id, incidentId)),
   ]);
   return true;
+}
+
+/** Windows that haven't ended yet (active first, then upcoming) plus the last few that have. */
+export async function listMaintenanceWindows(nowUtc: string) {
+  const rows = await getDb()
+    .select({ window: maintenanceWindows, monitorName: monitors.name, client: monitors.client })
+    .from(maintenanceWindows)
+    .innerJoin(monitors, eq(maintenanceWindows.monitorId, monitors.id))
+    .orderBy(maintenanceWindows.startsAt);
+  return rows.filter((r) => r.window.endsAt > nowUtc).concat(rows.filter((r) => r.window.endsAt <= nowUtc).slice(-5).reverse());
+}
+
+export async function createMaintenanceWindow(values: { monitorId: number; startsAt: string; endsAt: string; note: string }) {
+  await getDb().insert(maintenanceWindows).values(values);
+}
+
+export async function deleteMaintenanceWindow(id: number) {
+  await getDb().delete(maintenanceWindows).where(eq(maintenanceWindows.id, id));
 }

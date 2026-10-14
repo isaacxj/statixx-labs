@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { UptimeBars } from "@/components/uptime-bars";
 import { INCIDENT_STATUS_LABELS } from "@/lib/incident-form";
 import { formatCheckedAt } from "@/lib/monitors";
+import { monitorsInMaintenance, windowState } from "@/lib/maintenance";
 import { OVERALL_COPY, overallStatus, publicIncidentTitle, safeAccent } from "@/lib/public-status";
 import { formatDuration } from "@/lib/status";
 import { dailyUptime, formatUptime, nowMs, uptimePercent } from "@/lib/uptime";
@@ -16,8 +17,10 @@ export const dynamic = "force-dynamic";
 const DAY = 24 * 3600_000;
 const BANNER_TONE = { up: "border-status-up/40 bg-status-up/10 text-status-up", degraded: "border-status-degraded/40 bg-status-degraded/10 text-status-degraded", down: "border-status-down/40 bg-status-down/10 text-status-down" } as const;
 
+const toUtc = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+
 async function load(slug: string) {
-  return getPublicStatusPage(slug, new Date(nowMs() - 90 * DAY).toISOString().slice(0, 19).replace("T", " "));
+  return getPublicStatusPage(slug, toUtc(nowMs() - 90 * DAY), toUtc(nowMs()));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -30,11 +33,14 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
   const { slug } = await params;
   const found = await load(slug);
   if (!found) notFound();
-  const { page, components, checks, incidents, updates } = found;
+  const { page, components, checks, incidents, updates, windows } = found;
 
   const now = nowMs();
-  const overall = OVERALL_COPY[overallStatus(components.map((c) => c.status))];
+  const maintenance = monitorsInMaintenance(windows.map((w) => ({ ...w })), now);
+  // A monitor under maintenance is not an outage, whatever its last check said.
+  const overall = OVERALL_COPY[overallStatus(components.filter((c) => !maintenance.has(c.monitorId)).map((c) => c.status))];
   const BannerIcon = { up: CheckCircle2, degraded: AlertTriangle, down: XCircle }[overall.kind as "up" | "degraded" | "down"];
+  const displayNames = new Map(components.map((c) => [c.monitorId, c.displayName]));
   const names = new Map(components.map((c) => [c.monitorId, c.displayName]));
   const updatesFor = (incidentId: number) => updates.filter((u) => u.incidentId === incidentId);
   const active = incidents.filter((i) => !i.resolvedAt);
@@ -57,6 +63,24 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
           <BannerIcon className="size-6 shrink-0" aria-hidden />
           <p className="text-lg font-semibold">{overall.label}</p>
         </section>
+
+        {windows.length > 0 && (
+          <section aria-labelledby="maintenance-heading" className="flex flex-col gap-3">
+            <h2 id="maintenance-heading" className="text-lg font-semibold">Scheduled maintenance</h2>
+            <ul className="flex flex-col gap-3">
+              {windows.map((w) => (
+                <li key={`${w.monitorId}-${w.startsAt}`} className="rounded-lg border p-4">
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
+                    {displayNames.get(w.monitorId)}
+                    {windowState(w, now) === "active" ? <StatusBadge status="maintenance" /> : <span className="text-muted-foreground text-sm font-normal">Upcoming</span>}
+                  </p>
+                  <p className="text-muted-foreground mt-1 font-mono text-sm tabular-nums">{formatCheckedAt(w.startsAt)} – {formatCheckedAt(w.endsAt)} (Central)</p>
+                  {w.note ? <p className="mt-1 text-sm">{w.note}</p> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {active.length > 0 && (
           <section aria-labelledby="active-heading" className="flex flex-col gap-3">
@@ -96,7 +120,7 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
                       <h3 className="min-w-0 truncate font-medium">{c.displayName}</h3>
                       <div className="flex shrink-0 items-center gap-3">
                         <span className="text-muted-foreground font-mono text-sm tabular-nums">{formatUptime(uptimePercent(points, now, 90 * DAY))}</span>
-                        <StatusBadge status={c.status} />
+                        <StatusBadge status={maintenance.has(c.monitorId) ? "maintenance" : c.status} />
                       </div>
                     </div>
                     <UptimeBars days={dailyUptime(points, now, 90)} />

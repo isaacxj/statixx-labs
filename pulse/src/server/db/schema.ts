@@ -38,6 +38,7 @@ export const checks = sqliteTable("checks", {
   statusCode: integer("status_code"),
   latencyMs: integer("latency_ms"),
   error: text("error"),
+  maintenance: integer("maintenance", { mode: "boolean" }).notNull().default(false),
   ...timestamps,
 });
 
@@ -108,3 +109,12 @@ export const statusPageMonitors = sqliteTable(
   },
   (t) => [uniqueIndex("status_page_monitors_page_monitor").on(t.statusPageId, t.monitorId)],
 );
+
+export const maintenanceWindows = sqliteTable("maintenance_windows", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  monitorId: integer("monitor_id").notNull().references(() => monitors.id),
+  startsAt: text("starts_at").notNull(),
+  endsAt: text("ends_at").notNull(),
+  note: text("note").notNull().default(""),
+  ...timestamps,
+});

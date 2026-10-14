@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { parseMonitorForm, type MonitorFormResult } from "@/lib/monitor-form";
 import { parseIncidentForm, parseUpdateForm, type IncidentErrors, type UpdateErrors } from "@/lib/incident-form";
+import { parseWindowForm, type WindowErrors } from "@/lib/maintenance";
 import { parseRecipient } from "@/lib/alerts";
 import { cleanPageMonitors, parseStatusPageForm, type StatusPageErrors } from "@/lib/status-page-form";
-import { addAlertRecipient, addIncidentUpdate, createManualIncident, createMonitor, createStatusPage, deleteMonitor, deleteStatusPage, getStatusPage, listMonitors, setStatusPageMonitors, updateStatusPage, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
+import { addAlertRecipient, createMaintenanceWindow, deleteMaintenanceWindow, getMonitor, addIncidentUpdate, createManualIncident, createMonitor, createStatusPage, deleteMonitor, deleteStatusPage, getStatusPage, listMonitors, setStatusPageMonitors, updateStatusPage, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
 
 export type SaveState = { ok: boolean; message?: string; errors?: Extract<MonitorFormResult, { ok: false }>["errors"] } | null;
 
@@ -105,4 +106,23 @@ export async function postIncidentUpdate(incidentId: number, _prev: IncidentStat
   revalidatePath("/incidents");
   revalidatePath("/s/[slug]", "page");
   return { ok: true, message: parsed.value.status === "resolved" ? "Incident resolved" : "Update posted" };
+}
+
+export type WindowState = { ok: boolean; message?: string; errors?: WindowErrors } | null;
+
+export async function addMaintenanceWindow(_prev: WindowState, form: FormData): Promise<WindowState> {
+  const parsed = parseWindowForm(form);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  const monitor = await getMonitor(parsed.value.monitorId);
+  if (!monitor) return { ok: false, errors: { monitorId: "That monitor no longer exists." } };
+  await createMaintenanceWindow(parsed.value);
+  revalidatePath("/settings");
+  revalidatePath("/s/[slug]", "page");
+  return { ok: true, message: `Maintenance scheduled for ${monitor.name}` };
+}
+
+export async function removeMaintenanceWindow(id: number) {
+  await deleteMaintenanceWindow(id);
+  revalidatePath("/settings");
+  revalidatePath("/s/[slug]", "page");
 }

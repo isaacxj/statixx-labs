@@ -4,6 +4,7 @@ const { env, dispose } = await getPlatformProxy<{ DB: D1Database }>({ persist: {
 const db = env.DB;
 
 await db.batch([
+  db.prepare("DELETE FROM maintenance_windows"),
   db.prepare("DELETE FROM status_page_monitors"),
   db.prepare("DELETE FROM status_pages"),
   db.prepare("DELETE FROM rollups"),
@@ -33,6 +34,10 @@ await db.batch([
   ),
   db.prepare("INSERT INTO status_pages (id, slug, title, accent, intro_md) VALUES (1, 'northwind-dental', 'Northwind Dental status', '#0ea5e9', 'Live status for the Northwind Dental website and booking system.')"),
   db.prepare("INSERT INTO status_page_monitors (status_page_id, monitor_id, display_name, position) VALUES (1, 1, 'Website', 0), (1, 2, 'Online booking', 1)"),
+  db.prepare(
+    "INSERT INTO maintenance_windows (monitor_id, starts_at, ends_at, note) VALUES " +
+      "(2, datetime('now', '+2 days'), datetime('now', '+2 days', '+1 hour'), 'Booking system upgrade')",
+  ),
   db.prepare("UPDATE monitors SET last_checked_at = datetime('now') WHERE id IN (1, 2)"),
   db.prepare(
     "INSERT INTO incidents (monitor_id, title, status, started_at, resolved_at, auto) VALUES " +

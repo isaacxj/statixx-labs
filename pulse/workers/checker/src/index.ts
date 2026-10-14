@@ -1,11 +1,12 @@
 import { EmailMessage } from "cloudflare:email";
 import { drizzle } from "drizzle-orm/d1";
-import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
-import { alertRecipients, checks, incidents, monitors } from "../../../src/server/db/schema";
+import { alertRecipients, checks, incidents, maintenanceWindows, monitors } from "../../../src/server/db/schema";
 import { nextCheckTime, runCheck, toSqlTime } from "../../../src/lib/check";
 import { hourStart, rawCutoff, rollupCutoff } from "../../../src/lib/retention";
 import { alertContent, rawEmail, type AlertKind } from "../../../src/lib/alerts";
+import { monitorsInMaintenance } from "../../../src/lib/maintenance";
 import { incidentTitle, nextMonitorState } from "../../../src/lib/status";
 
 type Env = { DB: D1Database; ALERT_EMAIL: SendEmail; ALERT_FROM: string };
@@ -22,10 +23,15 @@ export async function runDueChecks(env: Env, nowMs = Date.now()) {
   if (results.length === 0) return 0;
 
   const at = toSqlTime(nowMs);
+  const windows = await db.select().from(maintenanceWindows).where(gt(maintenanceWindows.endsAt, at));
+  const inMaintenance = monitorsInMaintenance(windows, nowMs);
   const statements = results.flatMap(({ m, r }): BatchItem<"sqlite">[] => {
-    const next = nextMonitorState(m, r.ok);
+    // During a maintenance window the check is recorded but flagged: it never changes status,
+    // opens an incident, or counts toward uptime.
+    const maintenance = inMaintenance.has(m.id);
+    const next = maintenance ? { status: m.status, consecutiveFailures: m.consecutiveFailures, incident: null } : nextMonitorState(m, r.ok);
     const out: BatchItem<"sqlite">[] = [
-      db.insert(checks).values({ monitorId: m.id, at, ok: r.ok, statusCode: r.statusCode, latencyMs: r.latencyMs, error: r.error }),
+      db.insert(checks).values({ monitorId: m.id, at, ok: r.ok, statusCode: r.statusCode, latencyMs: r.latencyMs, error: r.error, maintenance }),
       db
         .update(monitors)
         .set({
@@ -105,7 +111,7 @@ export async function rollupAndPrune(env: Env, nowMs = Date.now()) {
       `insert into rollups (monitor_id, hour, checks, failures, avg_latency_ms, max_latency_ms)
        select monitor_id, strftime('%Y-%m-%d %H:00:00', at) as hour, count(*), sum(case when ok = 0 then 1 else 0 end),
          cast(round(avg(latency_ms)) as integer), max(latency_ms)
-       from checks where at < ?1 group by monitor_id, hour
+       from checks where at < ?1 and maintenance = 0 group by monitor_id, hour
        on conflict (monitor_id, hour) do update set checks = excluded.checks, failures = excluded.failures,
          avg_latency_ms = excluded.avg_latency_ms, max_latency_ms = excluded.max_latency_ms, updated_at = datetime('now')`,
     ).bind(hourStart(nowMs)),
