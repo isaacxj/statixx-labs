@@ -139,3 +139,20 @@
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 }
+
+/* Paper is always light: print the light tokens even when the screen theme is dark. */
+@media print {
+  .dark {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.21 0.006 286);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.21 0.006 286);
+    --muted-foreground: oklch(0.48 0.016 286);
+    --border: oklch(0.915 0.004 286);
+    --success: oklch(0.5 0.13 155);
+    --danger: oklch(0.52 0.19 27);
+  }
+  @page {
+    margin: 14mm;
+  }
+}

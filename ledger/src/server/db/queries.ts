@@ -5,8 +5,11 @@ import { likePattern } from "@/lib/client-form";
 import { addDays, todayChicago } from "@/lib/dates";
 import type { PaymentInput } from "@/lib/payments";
 import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-status";
+import type { RetainerInput } from "@/lib/retainer-form";
+import { runDates } from "@/lib/retainer-schedule";
+import { digestSince, loadDigestData } from "@/lib/digest-data";
 import { getD1, getDb } from "./index";
-import { businesses, clients, invoiceItems, invoices, payments } from "./schema";
+import { businesses, clients, events, invoiceItems, invoices, payments, retainers, settings } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -120,10 +123,15 @@ export async function countInvoicesByStatus() {
 export async function sendInvoice(id: number): Promise<boolean> {
   const found = await getInvoice(id);
   if (!found || !canSend(found.invoice.status)) return false;
-  await getDb()
-    .update(invoices)
-    .set({ status: "sent", sentAt: sql`(datetime('now'))`, updatedAt: sql`(datetime('now'))` })
-    .where(and(eq(invoices.id, id), eq(invoices.status, "draft")));
+  const d1 = getD1();
+  await d1.batch([
+    d1
+      .prepare(`INSERT INTO events (invoice_id, type) SELECT id, 'sent' FROM invoices WHERE id = ?1 AND status = 'draft'`)
+      .bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = 'sent', sent_at = datetime('now'), updated_at = datetime('now') WHERE id = ?1 AND status = 'draft'`)
+      .bind(id),
+  ]);
   return true;
 }
 
@@ -131,10 +139,14 @@ export async function sendInvoice(id: number): Promise<boolean> {
 export async function voidInvoice(id: number): Promise<boolean> {
   const found = await getInvoice(id);
   if (!found || !canVoid(found.invoice.status, found.invoice.paidCents)) return false;
-  await getDb()
-    .update(invoices)
-    .set({ status: "void", voidedAt: sql`(datetime('now'))`, updatedAt: sql`(datetime('now'))` })
-    .where(and(eq(invoices.id, id), eq(invoices.paidCents, 0), sql`${invoices.status} NOT IN ('void', 'paid')`));
+  const d1 = getD1();
+  const guard = `FROM invoices WHERE id = ?1 AND paid_cents = 0 AND status NOT IN ('void', 'paid')`;
+  await d1.batch([
+    d1.prepare(`INSERT INTO events (invoice_id, type) SELECT id, 'voided' ${guard}`).bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = 'void', voided_at = datetime('now'), updated_at = datetime('now') WHERE id = ?1 AND paid_cents = 0 AND status NOT IN ('void', 'paid')`)
+      .bind(id),
+  ]);
   return true;
 }
 
@@ -194,7 +206,10 @@ export async function createInvoice(input: InvoiceInput): Promise<number | null>
       notesMd: input.notesMd,
     })
     .returning({ id: invoices.id });
-  await db.insert(invoiceItems).values(itemRows(row.id, input.items));
+  await db.batch([
+    db.insert(invoiceItems).values(itemRows(row.id, input.items)),
+    db.insert(events).values({ invoiceId: row.id, type: "created" }),
+  ]);
   return row.id;
 }
 
@@ -239,6 +254,9 @@ export async function recordPayment(invoiceId: number, input: PaymentInput): Pro
   const guard = `FROM invoices WHERE id = ?1 AND status IN ('sent','viewed','partially_paid','overdue') AND paid_cents + ?2 <= total_cents`;
   const [inserted] = await d1.batch([
     d1
+      .prepare(`INSERT INTO events (invoice_id, type, meta_json) SELECT id, 'payment', json_object('amountCents', ?2) ${guard}`)
+      .bind(invoiceId, input.amountCents),
+    d1
       .prepare(`INSERT INTO payments (invoice_id, amount_cents, paid_on, method, reference) SELECT id, ?2, ?3, ?4, ?5 ${guard}`)
       .bind(invoiceId, input.amountCents, input.paidOn, input.method, input.reference),
     d1
@@ -251,4 +269,109 @@ export async function recordPayment(invoiceId: number, input: PaymentInput): Pro
       .bind(invoiceId, input.amountCents),
   ]);
   return (inserted.meta.changes ?? 0) > 0;
+}
+
+/** Everything the public invoice page may show, looked up by share token. Drafts are never public. */
+export async function getInvoiceByToken(token: string) {
+  const db = getDb();
+  const [invoice] = await db.select().from(invoices).where(eq(invoices.shareToken, token)).limit(1);
+  if (!invoice || invoice.status === "draft") return null;
+  const [items, [business], [client], paymentList] = await Promise.all([
+    db.select().from(invoiceItems).where(eq(invoiceItems.invoiceId, invoice.id)).orderBy(asc(invoiceItems.position)),
+    db.select().from(businesses).where(eq(businesses.id, invoice.businessId)).limit(1),
+    db.select().from(clients).where(eq(clients.id, invoice.clientId)).limit(1),
+    db.select().from(payments).where(eq(payments.invoiceId, invoice.id)).orderBy(asc(payments.paidOn), asc(payments.id)),
+  ]);
+  if (!business) return null;
+  return { invoice, items, business, client: client ?? null, payments: paymentList };
+}
+
+/**
+ * Records the client's first view: stamps `viewed_at`, moves a sent invoice to viewed, and adds
+ * the timeline event. The guard on `viewed_at IS NULL` makes concurrent opens record it once.
+ */
+export async function recordFirstView(invoiceId: number): Promise<void> {
+  const d1 = getD1();
+  const guard = `FROM invoices WHERE id = ?1 AND viewed_at IS NULL AND status <> 'draft'`;
+  await d1.batch([
+    d1.prepare(`INSERT INTO events (invoice_id, type) SELECT id, 'viewed' ${guard}`).bind(invoiceId),
+    d1
+      .prepare(
+        `UPDATE invoices SET viewed_at = datetime('now'),
+           status = CASE WHEN status = 'sent' THEN 'viewed' ELSE status END,
+           updated_at = datetime('now')
+         WHERE id = ?1 AND viewed_at IS NULL AND status <> 'draft'`,
+      )
+      .bind(invoiceId),
+  ]);
+}
+
+export async function listEvents(invoiceId: number) {
+  return getDb().select().from(events).where(eq(events.invoiceId, invoiceId)).orderBy(desc(events.at), desc(events.id));
+}
+
+export async function listRetainers() {
+  return getDb()
+    .select({
+      id: retainers.id,
+      title: retainers.title,
+      cadence: retainers.cadence,
+      active: retainers.active,
+      nextRunOn: retainers.nextRunOn,
+      itemsJson: retainers.itemsJson,
+      clientName: clients.name,
+      businessName: businesses.name,
+      currency: businesses.currency,
+    })
+    .from(retainers)
+    .innerJoin(clients, eq(clients.id, retainers.clientId))
+    .innerJoin(businesses, eq(businesses.id, retainers.businessId))
+    .orderBy(desc(retainers.active), asc(retainers.nextRunOn), asc(retainers.title));
+}
+
+export async function getRetainer(id: number) {
+  const [row] = await getDb().select().from(retainers).where(eq(retainers.id, id)).limit(1);
+  return row ?? null;
+}
+
+function retainerValues(input: RetainerInput) {
+  const { items, ...rest } = input;
+  const nextRunOn = rest.active
+    ? (runDates(rest, 1, todayChicago())[0] ?? null)
+    : null;
+  return { ...rest, nextRunOn, itemsJson: JSON.stringify(items) };
+}
+
+export async function createRetainer(input: RetainerInput) {
+  const [row] = await getDb().insert(retainers).values(retainerValues(input)).returning({ id: retainers.id });
+  return row.id;
+}
+
+export async function updateRetainer(id: number, input: RetainerInput) {
+  await getDb()
+    .update(retainers)
+    .set({ ...retainerValues(input), updatedAt: sql`(datetime('now'))` })
+    .where(eq(retainers.id, id));
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const [row] = await getDb().select().from(settings).where(eq(settings.key, key)).limit(1);
+  return row?.value ?? null;
+}
+
+/** An empty value removes the setting. */
+export async function setSetting(key: string, value: string) {
+  if (!value) {
+    await getDb().delete(settings).where(eq(settings.key, key));
+    return;
+  }
+  await getDb()
+    .insert(settings)
+    .values({ key, value })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: sql`(datetime('now'))` } });
+}
+
+/** The morning digest's contents for today, as the jobs Worker would send them. */
+export async function getDigestData(now = new Date()) {
+  return loadDigestData(getD1(), todayChicago(now), digestSince(now));
 }

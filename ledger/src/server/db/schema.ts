@@ -60,7 +60,11 @@ export const invoices = sqliteTable(
     voidedAt: text("voided_at"),
     ...timestamps,
   },
-  (t) => [uniqueIndex("invoices_business_number").on(t.businessId, t.number)],
+  (t) => [
+    uniqueIndex("invoices_business_number").on(t.businessId, t.number),
+    // One invoice per retainer run, so the jobs Worker can run twice without duplicating.
+    uniqueIndex("invoices_retainer_run").on(t.retainerId, t.issueDate).where(sql`${t.retainerId} IS NOT NULL`),
+  ],
 );
 
 export const invoiceItems = sqliteTable("invoice_items", {
@@ -74,6 +78,21 @@ export const invoiceItems = sqliteTable("invoice_items", {
   ...timestamps,
 });
 
+export const retainers = sqliteTable("retainers", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  businessId: integer("business_id").notNull().references(() => businesses.id),
+  clientId: integer("client_id").notNull().references(() => clients.id),
+  title: text("title").notNull(),
+  cadence: text("cadence", { enum: ["monthly", "quarterly"] }).notNull().default("monthly"),
+  anchorDay: integer("anchor_day").notNull(),
+  startsOn: text("starts_on").notNull(),
+  endsOn: text("ends_on"),
+  nextRunOn: text("next_run_on"),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  itemsJson: text("items_json").notNull().default("[]"),
+  ...timestamps,
+});
+
 export const PAYMENT_METHODS = ["bank_transfer", "e_transfer", "card", "cheque", "cash", "other"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
@@ -84,5 +103,24 @@ export const payments = sqliteTable("payments", {
   paidOn: text("paid_on").notNull(),
   method: text("method", { enum: PAYMENT_METHODS }).notNull().default("bank_transfer"),
   reference: text("reference").notNull().default(""),
+  ...timestamps,
+});
+
+export const EVENT_TYPES = ["created", "sent", "viewed", "payment", "overdue", "voided"] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export const events = sqliteTable("events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  invoiceId: integer("invoice_id").notNull().references(() => invoices.id),
+  type: text("type", { enum: EVENT_TYPES }).notNull(),
+  at: text("at").notNull().default(sql`(datetime('now'))`),
+  metaJson: text("meta_json").notNull().default("{}"),
+  ...timestamps,
+});
+
+/** Small key/value settings, such as the digest recipient. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
   ...timestamps,
 });

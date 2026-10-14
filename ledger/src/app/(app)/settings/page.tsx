@@ -2,13 +2,15 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatRate } from "@/lib/money";
-import { listBusinesses } from "@/server/db/queries";
+import { DIGEST_SETTING } from "@/lib/digest";
+import { getSetting, listBusinesses } from "@/server/db/queries";
+import { DigestForm } from "./digest-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings · Ledger" };
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
-  const [{ saved }, businesses] = await Promise.all([searchParams, listBusinesses()]);
+  const [{ saved }, businesses, recipient] = await Promise.all([searchParams, listBusinesses(), getSetting(DIGEST_SETTING)]);
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -41,6 +43,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </li>
         ))}
       </ul>
+      <DigestForm recipient={recipient ?? ""} />
     </div>
   );
 }

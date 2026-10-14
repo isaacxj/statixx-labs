@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Repeat } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { getInvoice, listPayments } from "@/server/db/queries";
+import { getInvoice, getRetainer, listEvents, listPayments } from "@/server/db/queries";
 import { canSend, canVoid, statusLabel, statusTone } from "@/lib/invoice-status";
 import { formatDate, todayChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { balanceCents, canRecordPayment, METHOD_LABELS } from "@/lib/payments";
+import { eventLabel, formatEventTime } from "@/lib/activity";
 import { InvoiceActions } from "../invoice-actions";
 import { InvoiceEditor } from "../invoice-editor";
 import { InvoicePreview } from "../invoice-preview";
 import { PaymentSheet } from "../payment-sheet";
+import { ShareLink } from "../share-link";
+import { sharePath } from "@/lib/share-link";
 import { centsToText, loadEditorOptions, qtyToText, rateText } from "../editor-data";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +29,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   if (!business) notFound();
   const editable = invoice.status === "draft";
   const paymentList = await listPayments(invoice.id);
+  const eventList = await listEvents(invoice.id);
+  const retainer = invoice.retainerId ? await getRetainer(invoice.retainerId) : null;
   const balance = balanceCents(invoice.totalCents, invoice.paidCents);
   const money = (c: number) => formatMoney(c, invoice.currency);
   return (
@@ -37,6 +42,11 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         <div className="flex items-center gap-3">
           <h1 className="font-mono text-2xl font-semibold tracking-tight">{invoice.number}</h1>
           <Badge tone={statusTone(invoice.status)} className="capitalize">{statusLabel(invoice.status)}</Badge>
+          {retainer && (
+            <Link href={`/retainers/${retainer.id}`} className="text-muted-foreground hover:text-foreground text-13 inline-flex items-center gap-1">
+              <Repeat className="size-4" />{retainer.title}
+            </Link>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {canRecordPayment(invoice.status) && <PaymentSheet invoiceId={invoice.id} balanceCents={balance} today={todayChicago()} />}
@@ -74,6 +84,23 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             items={items}
             notes={invoice.notesMd}
           />
+          {invoice.status !== "void" && <ShareLink path={sharePath(invoice.shareToken)} />}
+          <section aria-labelledby="activity-heading" className="bg-card rounded-card flex flex-col gap-4 border p-5">
+            <h2 id="activity-heading" className="text-base font-semibold">Activity</h2>
+            <ol className="flex flex-col">
+              {eventList.map((e) => {
+                const meta = JSON.parse(e.metaJson) as { amountCents?: number };
+                const label = eventLabel(e.type, { amountText: meta.amountCents != null ? money(meta.amountCents) : undefined });
+                return (
+                  <li key={e.id} className="text-13 flex items-start gap-3 py-2">
+                    <span aria-hidden className={`mt-1.5 size-2 shrink-0 rounded-full ${e.type === "viewed" ? "bg-info" : e.type === "payment" ? "bg-success" : "bg-muted-foreground"}`} />
+                    <span className="flex-1">{label}</span>
+                    <time dateTime={e.at} className="text-muted-foreground font-mono tabular-nums">{formatEventTime(e.at)}</time>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
           {invoice.status !== "void" && (
             <section aria-labelledby="payments-heading" className="bg-card rounded-card flex flex-col gap-4 border p-5">
               <h2 id="payments-heading" className="text-base font-semibold">Payments</h2>
