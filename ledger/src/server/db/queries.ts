@@ -8,6 +8,10 @@ import { canSend, canVoid, tabStatuses, type StatusTab } from "@/lib/invoice-sta
 import type { RetainerInput } from "@/lib/retainer-form";
 import { runDates } from "@/lib/retainer-schedule";
 import { digestSince, loadDigestData } from "@/lib/digest-data";
+import { monthStart, monthlyRetainerRevenue, summarizeOpen, type CurrencyAmounts, type OpenInvoice, type RetainerRow } from "@/lib/dashboard";
+import type { RetainerItem } from "@/lib/retainer-form";
+import type { CurrencyCode } from "@/lib/money";
+import type { ReportInvoice } from "@/lib/reports";
 import { getD1, getDb } from "./index";
 import { businesses, clients, events, invoiceItems, invoices, payments, retainers, settings } from "./schema";
 
@@ -148,6 +152,31 @@ export async function voidInvoice(id: number): Promise<boolean> {
       .bind(id),
   ]);
   return true;
+}
+
+/** Undo for "mark as sent": back to draft, only while nothing has happened to the invoice since. */
+export async function unsendInvoice(id: number): Promise<boolean> {
+  const d1 = getD1();
+  const guard = `FROM invoices WHERE id = ?1 AND status = 'sent' AND viewed_at IS NULL AND paid_cents = 0`;
+  const [, res] = await d1.batch([
+    d1.prepare(`DELETE FROM events WHERE invoice_id = ?1 AND type = 'sent' AND EXISTS (SELECT 1 ${guard})`).bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = 'draft', sent_at = NULL, updated_at = datetime('now') WHERE id = ?1 AND status = 'sent' AND viewed_at IS NULL AND paid_cents = 0`)
+      .bind(id),
+  ]);
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** Undo for "void": back to sent (or draft if it was never sent), and the voided event is removed. */
+export async function unvoidInvoice(id: number): Promise<boolean> {
+  const d1 = getD1();
+  const [, res] = await d1.batch([
+    d1.prepare(`DELETE FROM events WHERE id = (SELECT MAX(id) FROM events WHERE invoice_id = ?1 AND type = 'voided') AND EXISTS (SELECT 1 FROM invoices WHERE id = ?1 AND status = 'void')`).bind(id),
+    d1
+      .prepare(`UPDATE invoices SET status = CASE WHEN sent_at IS NULL THEN 'draft' ELSE 'sent' END, voided_at = NULL, updated_at = datetime('now') WHERE id = ?1 AND status = 'void'`)
+      .bind(id),
+  ]);
+  return (res.meta.changes ?? 0) > 0;
 }
 
 /** Copies an invoice into a new draft with the next number, dated today. */
@@ -374,4 +403,81 @@ export async function setSetting(key: string, value: string) {
 /** The morning digest's contents for today, as the jobs Worker would send them. */
 export async function getDigestData(now = new Date()) {
   return loadDigestData(getD1(), todayChicago(now), digestSince(now));
+}
+
+/** Everything the dashboard shows, computed for `now` (America/Chicago date). */
+export async function getDashboardData(now = new Date()) {
+  const today = todayChicago(now);
+  const d1 = getD1();
+  const [open, paid, retainerRows, upcoming, recent] = await Promise.all([
+    d1
+      .prepare(
+        `SELECT currency, due_date AS dueDate, total_cents - paid_cents AS balanceCents FROM invoices
+         WHERE status IN ('sent', 'viewed', 'partially_paid', 'overdue') AND total_cents > paid_cents`,
+      )
+      .all<OpenInvoice>(),
+    d1
+      .prepare(
+        `SELECT i.currency AS currency, SUM(p.amount_cents) AS cents FROM payments p JOIN invoices i ON i.id = p.invoice_id
+         WHERE p.paid_on >= ?1 AND p.paid_on <= ?2 GROUP BY i.currency`,
+      )
+      .bind(monthStart(today), today)
+      .all<{ currency: CurrencyCode; cents: number }>(),
+    d1
+      .prepare(
+        `SELECT r.cadence AS cadence, b.currency AS currency, r.items_json AS itemsJson FROM retainers r
+         JOIN businesses b ON b.id = r.business_id WHERE r.active = 1`,
+      )
+      .all<RetainerRow>(),
+    d1
+      .prepare(
+        `SELECT r.id AS id, r.title AS title, r.next_run_on AS nextRunOn, r.items_json AS itemsJson, c.name AS clientName, b.currency AS currency
+         FROM retainers r JOIN clients c ON c.id = r.client_id JOIN businesses b ON b.id = r.business_id
+         WHERE r.active = 1 ORDER BY r.next_run_on, r.title LIMIT 5`,
+      )
+      .all<{ id: number; title: string; nextRunOn: string; itemsJson: string; clientName: string; currency: CurrencyCode }>(),
+    d1
+      .prepare(
+        `SELECT p.id AS id, p.amount_cents AS amountCents, p.paid_on AS paidOn, p.method AS method, i.id AS invoiceId, i.number AS number,
+           i.currency AS currency, c.name AS clientName
+         FROM payments p JOIN invoices i ON i.id = p.invoice_id JOIN clients c ON c.id = i.client_id
+         ORDER BY p.paid_on DESC, p.id DESC LIMIT 5`,
+      )
+      .all<{ id: number; amountCents: number; paidOn: string; method: string; invoiceId: number; number: string; currency: CurrencyCode; clientName: string }>(),
+  ]);
+  const paidThisMonth: CurrencyAmounts = Object.fromEntries(paid.results.map((r) => [r.currency, r.cents]));
+  return {
+    today,
+    ...summarizeOpen(open.results, today),
+    paidThisMonth,
+    monthlyRetainers: monthlyRetainerRevenue(retainerRows.results),
+    upcomingRuns: upcoming.results.map(({ itemsJson, ...r }) => ({ ...r, totalCents: computeTotals(JSON.parse(itemsJson) as RetainerItem[]).totalCents })),
+    recentPayments: recent.results,
+  };
+}
+
+/** Issued (not draft, not void) invoices with the names reports group by. */
+export async function getReportInvoices() {
+  const { results } = await getD1()
+    .prepare(
+      `SELECT i.id AS id, i.number AS number, i.status AS status, i.issue_date AS issueDate, i.due_date AS dueDate, i.currency AS currency,
+         i.subtotal_cents AS subtotalCents, i.tax_cents AS taxCents, i.total_cents AS totalCents, i.paid_cents AS paidCents,
+         c.name AS clientName, b.name AS businessName
+       FROM invoices i JOIN clients c ON c.id = i.client_id JOIN businesses b ON b.id = i.business_id
+       WHERE i.status NOT IN ('draft', 'void') ORDER BY i.issue_date, i.number`,
+    )
+    .all<ReportInvoice & { id: number; number: string; status: string; dueDate: string; paidCents: number }>();
+  return results;
+}
+
+export async function getReportPayments() {
+  const { results } = await getD1()
+    .prepare(
+      `SELECT p.paid_on AS paidOn, i.number AS number, c.name AS clientName, b.name AS businessName, i.currency AS currency,
+         p.amount_cents AS amountCents, p.method AS method, p.reference AS reference
+       FROM payments p JOIN invoices i ON i.id = p.invoice_id JOIN clients c ON c.id = i.client_id JOIN businesses b ON b.id = i.business_id
+       ORDER BY p.paid_on, p.id`,
+    )
+    .all<{ paidOn: string; number: string; clientName: string; businessName: string; currency: CurrencyCode; amountCents: number; method: string; reference: string }>();
+  return results;
 }
