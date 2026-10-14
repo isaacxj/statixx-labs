@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+.wrangler
+.dev.vars
+*.tsbuildinfo
+next-env.d.ts
+worker-configuration.d.ts
+.vinext/
