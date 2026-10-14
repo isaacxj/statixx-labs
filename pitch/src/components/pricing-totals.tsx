@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { savePricingTermsAction } from "@/app/proposals/[id]/actions";
+import { savePricingTermsAction } from "@/app/(app)/proposals/[id]/actions";
 import { bpToInput, parseRateBp, proposalTotals } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import type { LineItem } from "@/server/db/schema";

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `proposals_share_token_unique` ON `proposals` (`share_token`);

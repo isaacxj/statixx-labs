@@ -1,4 +1,4 @@
-import css from "../globals.css?raw";
+import css from "../../globals.css?raw";
 import { contrastRatio, oklchToLinear, over, parseOklch, readTokens, type Rgb } from "@/lib/contrast";
 import { Badge } from "@/components/ui/badge";
 

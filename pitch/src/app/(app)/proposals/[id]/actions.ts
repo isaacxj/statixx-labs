@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { cleanValidUntil } from "@/lib/expiry";
 import { parseCents, parseQtyMilli, parseRateBp } from "@/lib/pricing";
 import {
   addLineItem,
@@ -9,6 +10,8 @@ import {
   createLibrarySection,
   deleteSection,
   duplicateProposal,
+  ensureShareToken,
+  markProposalSent,
   saveProposalAsTemplate,
   insertLibrarySection,
   listLibrary,
@@ -18,41 +21,49 @@ import {
   updateLineItem,
   updateSection,
   updateProposalPricing,
+  setValidUntil,
+  isProposalLocked,
   type LineItemPatch,
 } from "@/server/db/queries";
 
 const asId = (n: number) => (Number.isInteger(n) && n > 0 ? n : null);
 
+/** Valid id of a proposal that can still be edited; accepted proposals are frozen. */
+async function editableId(n: number) {
+  const id = asId(n);
+  return id && !(await isProposalLocked(id)) ? id : null;
+}
+
 export async function saveSectionAction(proposalId: number, id: number, title: string, bodyMd: string) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const sid = asId(id);
   if (!pid || !sid) return;
   await updateSection(sid, pid, { title: String(title), bodyMd: String(bodyMd) });
 }
 
 export async function addSectionAction(proposalId: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   if (!pid) return { sections: [], addedId: null };
   const addedId = await addSection(pid);
   return { sections: await listSections(pid), addedId };
 }
 
 export async function moveSectionAction(proposalId: number, id: number, dir: -1 | 1) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const sid = asId(id);
   if (pid && sid && (dir === -1 || dir === 1)) await moveSection(sid, pid, dir);
-  return { sections: pid ? await listSections(pid) : [] };
+  return { sections: asId(proposalId) ? await listSections(asId(proposalId)!) : [] };
 }
 
 export async function deleteSectionAction(proposalId: number, id: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const sid = asId(id);
   if (pid && sid) await deleteSection(sid, pid);
-  return { sections: pid ? await listSections(pid) : [] };
+  return { sections: asId(proposalId) ? await listSections(asId(proposalId)!) : [] };
 }
 
 export async function addPricingSectionAction(proposalId: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   if (!pid) return { sections: [], lines: [], addedId: null };
   const addedId = await addSection(pid, { title: "Pricing", bodyMd: "" }, "pricing");
   await addLineItem(addedId, pid);
@@ -60,17 +71,17 @@ export async function addPricingSectionAction(proposalId: number) {
 }
 
 export async function addLineItemAction(proposalId: number, sectionId: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const sid = asId(sectionId);
   if (pid && sid) await addLineItem(sid, pid);
-  return { lines: pid ? await listLineItems(pid) : [] };
+  return { lines: asId(proposalId) ? await listLineItems(asId(proposalId)!) : [] };
 }
 
 export async function deleteLineItemAction(proposalId: number, id: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const iid = asId(id);
   if (pid && iid) await deleteLineItem(iid, pid);
-  return { lines: pid ? await listLineItems(pid) : [] };
+  return { lines: asId(proposalId) ? await listLineItems(asId(proposalId)!) : [] };
 }
 
 /** Raw field strings in, validated patch out; a field that doesn't parse is skipped. */
@@ -79,7 +90,7 @@ export async function saveLineItemAction(
   id: number,
   fields: { description?: string; qty?: string; unitPrice?: string; recurring?: string; optional?: boolean; selected?: boolean },
 ) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const iid = asId(id);
   if (pid && iid) {
     const patch: LineItemPatch = {};
@@ -93,11 +104,11 @@ export async function saveLineItemAction(
     if (typeof fields.selected === "boolean") patch.selected = fields.selected;
     await updateLineItem(iid, pid, patch);
   }
-  return { lines: pid ? await listLineItems(pid) : [] };
+  return { lines: asId(proposalId) ? await listLineItems(asId(proposalId)!) : [] };
 }
 
 export async function savePricingTermsAction(proposalId: number, discount: string, tax: string) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const discountBp = parseRateBp(String(discount));
   const taxRateBp = parseRateBp(String(tax));
   if (pid && discountBp !== null && taxRateBp !== null) await updateProposalPricing(pid, { discountBp, taxRateBp });
@@ -116,10 +127,10 @@ export async function saveToLibraryAction(proposalId: number, sectionId: number,
 }
 
 export async function insertFromLibraryAction(proposalId: number, libraryId: number) {
-  const pid = asId(proposalId);
+  const pid = await editableId(proposalId);
   const lid = asId(libraryId);
   const addedId = pid && lid ? await insertLibrarySection(pid, lid) : null;
-  return { sections: pid ? await listSections(pid) : [], addedId };
+  return { sections: asId(proposalId) ? await listSections(asId(proposalId)!) : [], addedId };
 }
 
 export async function duplicateProposalAction(formData: FormData) {
@@ -133,4 +144,24 @@ export async function saveTemplateAction(formData: FormData) {
   if (!id) return;
   const name = await saveProposalAsTemplate(id, String(formData.get("name") ?? ""));
   if (name) redirect(`/templates?saved=${encodeURIComponent(name)}`);
+}
+
+export async function shareLinkAction(proposalId: number) {
+  const pid = asId(proposalId);
+  return { token: pid ? await ensureShareToken(pid) : null };
+}
+
+export async function markSentAction(proposalId: number) {
+  const pid = asId(proposalId);
+  const token = pid ? await markProposalSent(pid) : null;
+  return { token, status: token ? ("sent" as const) : null };
+}
+
+/** Saves the valid-until date; accepted proposals are frozen. */
+export async function saveValidUntilAction(proposalId: number, value: string) {
+  const pid = await editableId(proposalId);
+  const date = cleanValidUntil(value);
+  if (!pid || date === undefined) return { ok: false };
+  await setValidUntil(pid, date);
+  return { ok: true };
 }

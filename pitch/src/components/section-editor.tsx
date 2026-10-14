@@ -18,7 +18,7 @@ import {
   moveSectionAction,
   saveSectionAction,
   saveToLibraryAction,
-} from "@/app/proposals/[id]/actions";
+} from "@/app/(app)/proposals/[id]/actions";
 
 type Item = { id: number; kind: "text" | "pricing"; title: string; bodyMd: string };
 type Terms = { discountBp: number; taxRateBp: number };

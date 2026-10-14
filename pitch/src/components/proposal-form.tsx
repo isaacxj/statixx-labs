@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { saveProposal, type ProposalFormState } from "@/app/proposals/actions";
+import { saveProposal, type ProposalFormState } from "@/app/(app)/proposals/actions";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import type { Business, Client } from "@/server/db/schema";
 
