@@ -55,6 +55,15 @@ export const incidents = sqliteTable("incidents", {
   ...timestamps,
 });
 
+export const incidentUpdates = sqliteTable("incident_updates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  incidentId: integer("incident_id").notNull().references(() => incidents.id),
+  status: text("status", { enum: INCIDENT_STATUSES }).notNull(),
+  bodyMd: text("body_md").notNull(),
+  at: text("at").notNull().default(sql`(datetime('now'))`),
+  ...timestamps,
+});
+
 export const alertRecipients = sqliteTable("alert_recipients", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   email: text("email").notNull().unique(),

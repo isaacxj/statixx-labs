@@ -44,7 +44,7 @@ export async function runDueChecks(env: Env, nowMs = Date.now()) {
         db
           .update(incidents)
           .set({ status: "resolved", resolvedAt: at, updatedAt: sql`datetime('now')` })
-          .where(and(eq(incidents.monitorId, m.id), isNull(incidents.resolvedAt))),
+          .where(and(eq(incidents.monitorId, m.id), eq(incidents.auto, true), isNull(incidents.resolvedAt))),
       );
     }
     return out;
@@ -65,12 +65,12 @@ export async function sendPendingAlerts(env: Env, nowMs = Date.now()) {
     .select(select)
     .from(incidents)
     .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
-    .where(and(isNull(incidents.downAlertedAt), isNull(incidents.resolvedAt)));
+    .where(and(eq(incidents.auto, true), isNull(incidents.downAlertedAt), isNull(incidents.resolvedAt)));
   const pendingRecovered = await db
     .select(select)
     .from(incidents)
     .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
-    .where(and(isNotNull(incidents.downAlertedAt), isNotNull(incidents.resolvedAt), isNull(incidents.recoveredAlertedAt)));
+    .where(and(eq(incidents.auto, true), isNotNull(incidents.downAlertedAt), isNotNull(incidents.resolvedAt), isNull(incidents.recoveredAlertedAt)));
 
   let sent = 0;
   const deliver = async (kind: AlertKind, row: (typeof pendingDown)[number]) => {

@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { parseMonitorForm, type MonitorFormResult } from "@/lib/monitor-form";
+import { parseIncidentForm, parseUpdateForm, type IncidentErrors, type UpdateErrors } from "@/lib/incident-form";
 import { parseRecipient } from "@/lib/alerts";
 import { cleanPageMonitors, parseStatusPageForm, type StatusPageErrors } from "@/lib/status-page-form";
-import { addAlertRecipient, createMonitor, createStatusPage, deleteMonitor, deleteStatusPage, getStatusPage, listMonitors, setStatusPageMonitors, updateStatusPage, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
+import { addAlertRecipient, addIncidentUpdate, createManualIncident, createMonitor, createStatusPage, deleteMonitor, deleteStatusPage, getStatusPage, listMonitors, setStatusPageMonitors, updateStatusPage, removeAlertRecipient, setAlertRecipientActive, setMonitorPaused, updateMonitor } from "@/server/db/queries";
 
 export type SaveState = { ok: boolean; message?: string; errors?: Extract<MonitorFormResult, { ok: false }>["errors"] } | null;
 
@@ -79,4 +80,29 @@ export async function saveStatusPageMonitors(id: number, items: { monitorId: num
 export async function removeStatusPage(id: number) {
   await deleteStatusPage(id);
   revalidatePath("/status-pages");
+}
+
+export type IncidentState = { ok: boolean; message?: string; errors?: IncidentErrors & UpdateErrors; id?: number } | null;
+
+export async function saveIncident(statusPageId: number, _prev: IncidentState, form: FormData): Promise<IncidentState> {
+  const parsed = parseIncidentForm(form);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  const found = await getStatusPage(statusPageId);
+  if (!found) return { ok: false, message: "That page no longer exists." };
+  if (!found.items.some((i) => i.monitorId === parsed.value.monitorId)) return { ok: false, errors: { monitorId: "Pick a component shown on this page." } };
+  const id = await createManualIncident(statusPageId, parsed.value);
+  revalidatePath(`/status-pages/${statusPageId}`);
+  revalidatePath("/incidents");
+  revalidatePath(`/s/${found.page.slug}`);
+  return { ok: true, id, message: `Posted ${parsed.value.title}` };
+}
+
+export async function postIncidentUpdate(incidentId: number, _prev: IncidentState, form: FormData): Promise<IncidentState> {
+  const parsed = parseUpdateForm(form);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  if (!(await addIncidentUpdate(incidentId, parsed.value))) return { ok: false, message: "This incident is resolved or automatic, so it can't take updates." };
+  revalidatePath(`/incidents/${incidentId}`);
+  revalidatePath("/incidents");
+  revalidatePath("/s/[slug]", "page");
+  return { ok: true, message: parsed.value.status === "resolved" ? "Incident resolved" : "Update posted" };
 }

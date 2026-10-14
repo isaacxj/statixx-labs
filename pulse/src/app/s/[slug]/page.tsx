@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { UptimeBars } from "@/components/uptime-bars";
+import { INCIDENT_STATUS_LABELS } from "@/lib/incident-form";
 import { formatCheckedAt } from "@/lib/monitors";
 import { OVERALL_COPY, overallStatus, publicIncidentTitle, safeAccent } from "@/lib/public-status";
 import { formatDuration } from "@/lib/status";
@@ -29,12 +30,13 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
   const { slug } = await params;
   const found = await load(slug);
   if (!found) notFound();
-  const { page, components, checks, incidents } = found;
+  const { page, components, checks, incidents, updates } = found;
 
   const now = nowMs();
   const overall = OVERALL_COPY[overallStatus(components.map((c) => c.status))];
   const BannerIcon = { up: CheckCircle2, degraded: AlertTriangle, down: XCircle }[overall.kind as "up" | "degraded" | "down"];
   const names = new Map(components.map((c) => [c.monitorId, c.displayName]));
+  const updatesFor = (incidentId: number) => updates.filter((u) => u.incidentId === incidentId);
   const active = incidents.filter((i) => !i.resolvedAt);
   const past = incidents.filter((i) => i.resolvedAt).slice(0, 10);
   const lastUpdated = components.map((c) => c.lastCheckedAt).filter((t): t is string => t !== null).sort().at(-1) ?? null;
@@ -64,6 +66,16 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
                 <li key={i.id} className="rounded-lg border p-4">
                   <p className="font-medium">{publicIncidentTitle(i, names.get(i.monitorId) ?? "A service")}</p>
                   <p className="text-muted-foreground mt-1 text-sm"><span className="capitalize">{i.status}</span> · started {formatCheckedAt(i.startedAt)} · {formatDuration(i.startedAt, null, now)} so far</p>
+                  {updatesFor(i.id).length > 0 && (
+                    <ol className="mt-3 flex flex-col gap-3 border-l pl-4">
+                      {updatesFor(i.id).map((u) => (
+                        <li key={u.id}>
+                          <p className="text-sm"><span className="font-medium">{INCIDENT_STATUS_LABELS[u.status]}</span> <span className="text-muted-foreground">· <span className="font-mono tabular-nums">{formatCheckedAt(u.at)}</span></span></p>
+                          <p className="mt-0.5 text-sm whitespace-pre-line">{u.bodyMd}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </li>
               ))}
             </ul>
@@ -105,6 +117,16 @@ export default async function PublicStatusPage({ params }: { params: Promise<{ s
                 <li key={i.id} className="p-4">
                   <p className="font-medium">{publicIncidentTitle(i, names.get(i.monitorId) ?? "A service")}</p>
                   <p className="text-muted-foreground mt-1 text-sm">{formatCheckedAt(i.startedAt)} · resolved after {formatDuration(i.startedAt, i.resolvedAt)}</p>
+                  {updatesFor(i.id).length > 0 && (
+                    <ol className="mt-3 flex flex-col gap-3 border-l pl-4">
+                      {updatesFor(i.id).map((u) => (
+                        <li key={u.id}>
+                          <p className="text-sm"><span className="font-medium">{INCIDENT_STATUS_LABELS[u.status]}</span> <span className="text-muted-foreground">· <span className="font-mono tabular-nums">{formatCheckedAt(u.at)}</span></span></p>
+                          <p className="mt-0.5 text-sm whitespace-pre-line">{u.bodyMd}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
                 </li>
               ))}
             </ul>

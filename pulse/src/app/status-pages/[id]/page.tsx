@@ -5,7 +5,10 @@ import { AppShell } from "@/components/shell/app-shell";
 import { DeleteStatusPage } from "@/components/status-page-delete";
 import { StatusPageForm } from "@/components/status-page-form";
 import { StatusPageMonitors } from "@/components/status-page-monitors";
-import { getStatusPage, listMonitors } from "@/server/db/queries";
+import { NewIncidentSheet } from "@/components/incident-forms";
+import { formatCheckedAt } from "@/lib/monitors";
+import { INCIDENT_STATUS_LABELS } from "@/lib/incident-form";
+import { getStatusPage, listMonitors, listStatusPageIncidents } from "@/server/db/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +16,7 @@ export default async function StatusPageAdmin({ params }: { params: Promise<{ id
   const { id } = await params;
   const pageId = Number(id);
   if (!Number.isInteger(pageId)) notFound();
-  const [found, monitors] = await Promise.all([getStatusPage(pageId), listMonitors()]);
+  const [found, monitors, pageIncidents] = await Promise.all([getStatusPage(pageId), listMonitors(), listStatusPageIncidents(pageId)]);
   if (!found) notFound();
   const { page, items } = found;
 
@@ -50,6 +53,29 @@ export default async function StatusPageAdmin({ params }: { params: Promise<{ id
           />
         </section>
       </div>
+      <section aria-labelledby="incidents-heading" className="mt-10 flex min-w-0 flex-col gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 id="incidents-heading" className="text-lg font-semibold">Incidents</h3>
+            <p className="text-muted-foreground mt-1 text-sm">Post an incident to tell visitors what is happening, then update it through to resolved.</p>
+          </div>
+          <NewIncidentSheet pageId={page.id} components={items.map((i) => ({ monitorId: i.monitorId, displayName: i.displayName }))} />
+        </div>
+        {pageIncidents.length === 0 ? (
+          <p className="text-muted-foreground rounded-lg border border-dashed p-6 text-sm">No incidents posted on this page yet.</p>
+        ) : (
+          <ul className="bg-card divide-y rounded-lg border">
+            {pageIncidents.map((i) => (
+              <li key={i.id}>
+                <Link href={`/incidents/${i.id}`} className="hover:bg-accent flex min-h-11 flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="truncate font-medium">{i.title}</span>
+                  <span className="text-muted-foreground shrink-0 text-sm">{i.resolvedAt ? "Resolved" : INCIDENT_STATUS_LABELS[i.status]} · {formatCheckedAt(i.startedAt)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </AppShell>
   );
 }

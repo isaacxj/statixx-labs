@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, or, sql } from "drizzle-orm";
+import type { IncidentInput, UpdateInput } from "@/lib/incident-form";
 import { getDb } from "./index";
-import { alertRecipients, checks, incidents, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
+import { alertRecipients, checks, incidents, incidentUpdates, monitors, rollups, statusPageMonitors, statusPages } from "./schema";
 
 export async function listMonitors() {
   return getDb().select().from(monitors).orderBy(monitors.client, monitors.name);
@@ -173,14 +174,67 @@ export async function getPublicStatusPage(slug: string, sinceUtc: string) {
     .where(eq(statusPageMonitors.statusPageId, page.id))
     .orderBy(statusPageMonitors.position);
   const ids = components.map((c) => c.monitorId);
-  if (ids.length === 0) return { page, components, checks: [], incidents: [] };
+  if (ids.length === 0) return { page, components, checks: [], incidents: [], updates: [] };
   const [pageChecks, pageIncidents] = await Promise.all([
     db
       .select({ monitorId: checks.monitorId, at: checks.at, ok: checks.ok, latencyMs: checks.latencyMs })
       .from(checks)
       .where(and(inArray(checks.monitorId, ids), gt(checks.at, sinceUtc)))
       .orderBy(checks.at),
-    db.select().from(incidents).where(inArray(incidents.monitorId, ids)).orderBy(desc(incidents.startedAt)),
+    // Automatic incidents come from the page's monitors; manual ones only from the page they were posted on.
+    db
+      .select()
+      .from(incidents)
+      .where(and(inArray(incidents.monitorId, ids), or(eq(incidents.auto, true), eq(incidents.statusPageId, page.id))))
+      .orderBy(desc(incidents.startedAt)),
   ]);
-  return { page, components, checks: pageChecks, incidents: pageIncidents };
+  const manualIds = pageIncidents.filter((i) => !i.auto).map((i) => i.id);
+  const updates = manualIds.length === 0 ? [] : await db.select().from(incidentUpdates).where(inArray(incidentUpdates.incidentId, manualIds)).orderBy(desc(incidentUpdates.at), desc(incidentUpdates.id));
+  return { page, components, checks: pageChecks, incidents: pageIncidents, updates };
+}
+
+export async function getIncident(id: number) {
+  const db = getDb();
+  const [row] = await db
+    .select({ incident: incidents, monitorName: monitors.name, client: monitors.client, pageSlug: statusPages.slug, pageTitle: statusPages.title })
+    .from(incidents)
+    .innerJoin(monitors, eq(incidents.monitorId, monitors.id))
+    .leftJoin(statusPages, eq(incidents.statusPageId, statusPages.id))
+    .where(eq(incidents.id, id));
+  if (!row) return null;
+  const updates = await db.select().from(incidentUpdates).where(eq(incidentUpdates.incidentId, id)).orderBy(desc(incidentUpdates.at), desc(incidentUpdates.id));
+  return { ...row, updates };
+}
+
+export async function listStatusPageIncidents(statusPageId: number) {
+  return getDb().select().from(incidents).where(and(eq(incidents.statusPageId, statusPageId), eq(incidents.auto, false))).orderBy(desc(incidents.startedAt));
+}
+
+/** Creates a manual incident on a status page with its first update, atomically. */
+export async function createManualIncident(statusPageId: number, input: IncidentInput) {
+  const db = getDb();
+  const resolved = input.status === "resolved";
+  const [inserted] = await db.batch([
+    db
+      .insert(incidents)
+      .values({ monitorId: input.monitorId, statusPageId, title: input.title, status: input.status, startedAt: sql`datetime('now')`, resolvedAt: resolved ? sql`datetime('now')` : null, auto: false })
+      .returning({ id: incidents.id }),
+    db.insert(incidentUpdates).values({ incidentId: sql`last_insert_rowid()`, status: input.status, bodyMd: input.body }),
+  ]);
+  return inserted[0].id;
+}
+
+/** Posts an update and moves the incident to its status. Returns false for unknown, automatic or resolved incidents. */
+export async function addIncidentUpdate(incidentId: number, input: UpdateInput) {
+  const db = getDb();
+  const [incident] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
+  if (!incident || incident.auto || incident.resolvedAt) return false;
+  await db.batch([
+    db.insert(incidentUpdates).values({ incidentId, status: input.status, bodyMd: input.body }),
+    db
+      .update(incidents)
+      .set({ status: input.status, resolvedAt: input.status === "resolved" ? sql`datetime('now')` : null, updatedAt: sql`datetime('now')` })
+      .where(eq(incidents.id, incidentId)),
+  ]);
+  return true;
 }

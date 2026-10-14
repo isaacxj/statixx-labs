@@ -7,6 +7,7 @@ await db.batch([
   db.prepare("DELETE FROM status_page_monitors"),
   db.prepare("DELETE FROM status_pages"),
   db.prepare("DELETE FROM rollups"),
+  db.prepare("DELETE FROM incident_updates"),
   db.prepare("DELETE FROM incidents"),
   db.prepare("DELETE FROM checks"),
   db.prepare("DELETE FROM monitors"),
@@ -37,6 +38,16 @@ await db.batch([
     "INSERT INTO incidents (monitor_id, title, status, started_at, resolved_at, auto) VALUES " +
       "(2, 'Booking API is down: Timed out after 5000 ms', 'investigating', '2026-10-12 18:00:00', NULL, 1)," +
       "(1, 'Marketing site is down: Unexpected status 502', 'resolved', '2026-10-10 14:03:00', '2026-10-10 14:21:00', 1)",
+  ),
+  db.prepare(
+    "INSERT INTO incidents (id, monitor_id, status_page_id, title, status, started_at, resolved_at, auto) VALUES " +
+      "(100, 2, 1, 'Online booking is slow', 'monitoring', '2026-10-11 15:00:00', NULL, 0)",
+  ),
+  db.prepare(
+    "INSERT INTO incident_updates (incident_id, status, body_md, at) VALUES " +
+      "(100, 'investigating', 'Some patients see booking confirmations take longer than usual. We are looking into it.', '2026-10-11 15:00:00')," +
+      "(100, 'identified', 'A slow database query is the cause. A fix is being prepared.', '2026-10-11 15:25:00')," +
+      "(100, 'monitoring', 'The fix is live. We are watching response times.', '2026-10-11 16:10:00')",
   ),
 ]);
 
