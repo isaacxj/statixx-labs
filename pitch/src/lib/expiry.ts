@@ -5,7 +5,7 @@ export const chicagoDate = (at: Date) => dayFmt.format(at);
 
 export const FOLLOW_UP_DAYS = 3;
 
-const toDate = (utc: string) => new Date(utc.includes("T") ? utc : `${utc.replace(" ", "T")}Z`);
+export const toDate = (utc: string) => new Date(utc.includes("T") ? utc : `${utc.replace(" ", "T")}Z`);
 
 /** A proposal is valid through the end of its valid-until day (Chicago); only the dates are compared. */
 export const isPastValidUntil = (validUntil: string | null, now: Date) => !!validUntil && /^\d{4}-\d{2}-\d{2}$/.test(validUntil) && chicagoDate(now) > validUntil;

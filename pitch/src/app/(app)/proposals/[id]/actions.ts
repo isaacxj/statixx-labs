@@ -9,6 +9,7 @@ import {
   deleteLineItem,
   createLibrarySection,
   deleteSection,
+  restoreSection,
   duplicateProposal,
   ensureShareToken,
   markProposalSent,
@@ -60,6 +61,35 @@ export async function deleteSectionAction(proposalId: number, id: number) {
   const sid = asId(id);
   if (pid && sid) await deleteSection(sid, pid);
   return { sections: asId(proposalId) ? await listSections(asId(proposalId)!) : [] };
+}
+
+export async function restoreSectionAction(
+  proposalId: number,
+  snap: {
+    position: number;
+    kind: "text" | "pricing";
+    title: string;
+    bodyMd: string;
+    lines: { description: string; qtyMilli: number; unitPriceCents: number; recurring: "none" | "monthly"; optional: boolean }[];
+  },
+) {
+  const pid = await editableId(proposalId);
+  if (!pid) return { sections: [], lines: [], restoredId: null };
+  const lines = (Array.isArray(snap.lines) ? snap.lines : []).slice(0, 100).map((l) => ({
+    description: String(l.description ?? "").slice(0, 200),
+    qtyMilli: Number.isInteger(l.qtyMilli) && l.qtyMilli > 0 ? l.qtyMilli : 1000,
+    unitPriceCents: Number.isInteger(l.unitPriceCents) && l.unitPriceCents >= 0 ? l.unitPriceCents : 0,
+    recurring: l.recurring === "monthly" ? ("monthly" as const) : ("none" as const),
+    optional: l.optional === true,
+  }));
+  const restoredId = await restoreSection(pid, {
+    position: Number.isInteger(snap.position) ? snap.position : 1,
+    kind: snap.kind === "pricing" ? "pricing" : "text",
+    title: String(snap.title ?? ""),
+    bodyMd: String(snap.bodyMd ?? ""),
+    lines,
+  });
+  return { sections: await listSections(pid), lines: await listLineItems(pid), restoredId };
 }
 
 export async function addPricingSectionAction(proposalId: number) {

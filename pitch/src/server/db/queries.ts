@@ -9,7 +9,9 @@ import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapsh
 import { statusAfterView } from "@/lib/activity";
 import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
 import { chicagoDate, needsFollowUp } from "@/lib/expiry";
-import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
+import type { DashProposal } from "@/lib/dashboard";
+import type { ExportLine, ExportProposal } from "@/lib/csv";
+import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type LineItem, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -259,6 +261,40 @@ export async function deleteSection(id: number, proposalId: number) {
     db.delete(sections).where(and(eq(sections.id, id), eq(sections.proposalId, proposalId))),
     ...rest.map((s, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, s.id))),
   ]);
+}
+
+/** Puts a deleted section (and its line items) back at its old position. */
+export async function restoreSection(
+  proposalId: number,
+  snap: { position: number; kind: "text" | "pricing"; title: string; bodyMd: string; lines: Pick<LineItem, "description" | "qtyMilli" | "unitPriceCents" | "recurring" | "optional">[] },
+) {
+  const db = getDb();
+  const current = await listSections(proposalId);
+  const at = Math.min(Math.max(1, snap.position), current.length + 1);
+  const later = current.slice(at - 1);
+  if (later.length) {
+    const [first, ...rest] = later.map((s, i) => db.update(sections).set({ position: at + 1 + i }).where(eq(sections.id, s.id)));
+    await db.batch([first, ...rest]);
+  }
+  const [row] = await db
+    .insert(sections)
+    .values({ proposalId, position: at, kind: snap.kind, ...cleanSection(snap) })
+    .returning({ id: sections.id });
+  if (snap.kind === "pricing" && snap.lines.length) {
+    const [first, ...rest] = snap.lines.map((l, i) =>
+      db.insert(lineItems).values({
+        sectionId: row.id,
+        position: i + 1,
+        description: l.description,
+        qtyMilli: l.qtyMilli,
+        unitPriceCents: l.unitPriceCents,
+        recurring: l.recurring,
+        optional: l.optional,
+      }),
+    );
+    await db.batch([first, ...rest]);
+  }
+  return row.id;
 }
 
 export async function moveSection(id: number, proposalId: number, dir: -1 | 1) {
@@ -544,4 +580,120 @@ export async function listFollowUps(now = new Date()) {
     .where(eq(proposals.status, "viewed"))
     .orderBy(asc(proposals.firstViewedAt));
   return rows.filter((r) => needsFollowUp(r.status, r.firstViewedAt, now));
+}
+
+/** Every proposal with its priced line items, for the dashboard numbers. */
+export async function listDashboardProposals(): Promise<DashProposal[]> {
+  const db = getDb();
+  const [rows, items] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        status: proposals.status,
+        currency: proposals.currency,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        sentAt: proposals.sentAt,
+        acceptedAt: proposals.acceptedAt,
+      })
+      .from(proposals),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id)),
+  ]);
+  const byProposal = new Map<number, DashProposal["items"]>();
+  for (const { proposalId, ...item } of items) byProposal.set(proposalId, [...(byProposal.get(proposalId) ?? []), item]);
+  return rows.map(({ id, ...p }) => ({ ...p, items: byProposal.get(id) ?? [] }));
+}
+
+/** Latest timeline entries across all proposals, newest first. */
+export async function listRecentActivity(limit = 8) {
+  return getDb()
+    .select({
+      id: events.id,
+      type: events.type,
+      at: events.at,
+      metaJson: events.metaJson,
+      proposalId: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      clientName: clients.name,
+    })
+    .from(events)
+    .innerJoin(proposals, eq(events.proposalId, proposals.id))
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .orderBy(desc(events.at), desc(events.id))
+    .limit(limit);
+}
+
+/** Light rows for the command palette: the 50 newest proposals and every client. */
+export async function listPaletteData() {
+  const db = getDb();
+  const [props, cls] = await Promise.all([
+    db
+      .select({ id: proposals.id, number: proposals.number, title: proposals.title, status: proposals.status, clientName: clients.name })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .orderBy(desc(proposals.id))
+      .limit(50),
+    db.select({ id: clients.id, name: clients.name, company: clients.company }).from(clients).orderBy(asc(clients.name)),
+  ]);
+  return { proposals: props, clients: cls };
+}
+
+/** Every proposal with its priced items, plus each line with its section, for CSV export. */
+export async function listExportData(): Promise<{ proposals: ExportProposal[]; lines: ExportLine[] }> {
+  const db = getDb();
+  const [rows, lines] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        number: proposals.number,
+        title: proposals.title,
+        status: proposals.status,
+        currency: proposals.currency,
+        clientName: clients.name,
+        clientCompany: clients.company,
+        businessName: businesses.name,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        validUntil: proposals.validUntil,
+        sentAt: proposals.sentAt,
+        firstViewedAt: proposals.firstViewedAt,
+        viewCount: proposals.viewCount,
+        acceptedAt: proposals.acceptedAt,
+        acceptedByName: proposals.acceptedByName,
+        declinedAt: proposals.declinedAt,
+        declineReason: proposals.declineReason,
+      })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+      .orderBy(asc(proposals.number)),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        sectionTitle: sections.title,
+        description: lineItems.description,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+      .orderBy(asc(sections.proposalId), asc(sections.position), asc(lineItems.position), asc(lineItems.id)),
+  ]);
+  const byProposal = new Map<number, ExportProposal["items"]>();
+  for (const l of lines) byProposal.set(l.proposalId, [...(byProposal.get(l.proposalId) ?? []), l]);
+  return { proposals: rows.map((r) => ({ ...r, clientCompany: r.clientCompany ?? "", items: byProposal.get(r.id) ?? [] })), lines };
 }

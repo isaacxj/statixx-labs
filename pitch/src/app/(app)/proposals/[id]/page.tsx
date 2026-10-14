@@ -31,18 +31,18 @@ export default async function ProposalEditorPage({ params }: { params: Promise<{
           <Badge variant={proposal.status === "draft" ? "neutral" : proposal.status === "viewed" ? "warning" : proposal.status === "accepted" ? "success" : proposal.status === "declined" ? "danger" : proposal.status === "expired" ? "neutral" : "info"}>{proposal.status}</Badge>
         </div>
         <ShareActions proposalId={proposal.id} initialToken={proposal.shareToken} initialStatus={proposal.status} />
-        {proposal.status === "accepted" ? null : <ValidUntil proposalId={proposal.id} initial={proposal.validUntil} />}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {proposal.status === "accepted" ? null : <ValidUntil proposalId={proposal.id} initial={proposal.validUntil} />}
           <form action={duplicateProposalAction}>
             <input type="hidden" name="proposalId" value={proposal.id} />
             <Button type="submit" size="sm" variant="outline"><Copy />Duplicate</Button>
           </form>
-          <form action={saveTemplateAction} className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="proposalId" value={proposal.id} />
-            <Input name="name" defaultValue={proposal.title} aria-label="Template name" className="h-8 w-64 max-md:h-11 max-md:w-full" />
-            <Button type="submit" size="sm" variant="outline"><LayoutTemplate />Save as template</Button>
-          </form>
         </div>
+        <form action={saveTemplateAction} className="flex items-center gap-2 max-md:w-full">
+          <input type="hidden" name="proposalId" value={proposal.id} />
+          <Input name="name" defaultValue={proposal.title} aria-label="Template name" className="h-8 w-64 max-md:h-11 max-md:min-w-0 max-md:flex-1" />
+          <Button type="submit" size="sm" variant="outline" className="shrink-0"><LayoutTemplate />Save as template</Button>
+        </form>
         <p className="text-muted-foreground text-sm">
           <span className="tabular font-mono text-[13px]">{proposal.number}</span> · {proposal.clientName}
           {proposal.clientCompany ? ` · ${proposal.clientCompany}` : ""} · {proposal.businessName}

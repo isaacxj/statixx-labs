@@ -6,7 +6,7 @@ import { FileText, LayoutDashboard, LayoutTemplate, Library, Palette, Settings, 
 import { cn } from "@/lib/utils";
 
 export const navItems = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/proposals", label: "Proposals", icon: FileText },
   { href: "/library", label: "Library", icon: Library },
   { href: "/templates", label: "Templates", icon: LayoutTemplate },
