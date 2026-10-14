@@ -1,11 +1,17 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { likePattern } from "@/lib/client-form";
 import { formatProposalNumber } from "@/lib/proposal-form";
 import { getDb } from "./index";
+import { newShareToken } from "@/lib/share";
 import { cleanSection, moveId } from "@/lib/section-form";
 import { cleanLibraryEntry } from "@/lib/library-form";
 import { buildSnapshot, cleanTemplateName, copyTitle, parseSnapshot, type Snapshot } from "@/lib/template";
-import { businesses, clients, librarySections, lineItems, proposals, sections, templates, type ProposalStatus } from "./schema";
+import { statusAfterView } from "@/lib/activity";
+import { canRespond, isLocked, pickSelectable } from "@/lib/respond";
+import { chicagoDate, needsFollowUp } from "@/lib/expiry";
+import type { DashProposal } from "@/lib/dashboard";
+import type { ExportLine, ExportProposal } from "@/lib/csv";
+import { businesses, clients, events, librarySections, lineItems, proposals, sections, templates, type LineItem, type ProposalStatus } from "./schema";
 
 export async function listBusinesses() {
   return getDb().select().from(businesses).orderBy(asc(businesses.name));
@@ -122,6 +128,7 @@ async function createDraft(input: { title: string; businessId: number; clientId:
     }),
   ]);
   const [row] = await db.select({ id: proposals.id }).from(proposals).where(eq(proposals.number, number)).limit(1);
+  await db.insert(events).values({ proposalId: row.id, type: "created" });
   return { id: row.id, number };
 }
 
@@ -200,6 +207,12 @@ export async function getProposal(id: number) {
       currency: proposals.currency,
       discountBp: proposals.discountBp,
       taxRateBp: proposals.taxRateBp,
+      shareToken: proposals.shareToken,
+      sentAt: proposals.sentAt,
+      firstViewedAt: proposals.firstViewedAt,
+      validUntil: proposals.validUntil,
+      viewCount: proposals.viewCount,
+      acceptedByName: proposals.acceptedByName,
       clientName: clients.name,
       clientCompany: clients.company,
       businessName: businesses.name,
@@ -248,6 +261,40 @@ export async function deleteSection(id: number, proposalId: number) {
     db.delete(sections).where(and(eq(sections.id, id), eq(sections.proposalId, proposalId))),
     ...rest.map((s, i) => db.update(sections).set({ position: i + 1 }).where(eq(sections.id, s.id))),
   ]);
+}
+
+/** Puts a deleted section (and its line items) back at its old position. */
+export async function restoreSection(
+  proposalId: number,
+  snap: { position: number; kind: "text" | "pricing"; title: string; bodyMd: string; lines: Pick<LineItem, "description" | "qtyMilli" | "unitPriceCents" | "recurring" | "optional">[] },
+) {
+  const db = getDb();
+  const current = await listSections(proposalId);
+  const at = Math.min(Math.max(1, snap.position), current.length + 1);
+  const later = current.slice(at - 1);
+  if (later.length) {
+    const [first, ...rest] = later.map((s, i) => db.update(sections).set({ position: at + 1 + i }).where(eq(sections.id, s.id)));
+    await db.batch([first, ...rest]);
+  }
+  const [row] = await db
+    .insert(sections)
+    .values({ proposalId, position: at, kind: snap.kind, ...cleanSection(snap) })
+    .returning({ id: sections.id });
+  if (snap.kind === "pricing" && snap.lines.length) {
+    const [first, ...rest] = snap.lines.map((l, i) =>
+      db.insert(lineItems).values({
+        sectionId: row.id,
+        position: i + 1,
+        description: l.description,
+        qtyMilli: l.qtyMilli,
+        unitPriceCents: l.unitPriceCents,
+        recurring: l.recurring,
+        optional: l.optional,
+      }),
+    );
+    await db.batch([first, ...rest]);
+  }
+  return row.id;
 }
 
 export async function moveSection(id: number, proposalId: number, dir: -1 | 1) {
@@ -336,4 +383,317 @@ export async function insertLibrarySection(proposalId: number, libraryId: number
   const [entry] = await getDb().select().from(librarySections).where(eq(librarySections.id, libraryId)).limit(1);
   if (!entry) return null;
   return addSection(proposalId, { title: entry.title, bodyMd: entry.bodyMd });
+}
+
+/** The proposal's private link token, created on first use and stable afterwards. */
+export async function ensureShareToken(proposalId: number) {
+  const db = getDb();
+  const [row] = await db.select({ token: proposals.shareToken }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  if (!row) return null;
+  if (row.token) return row.token;
+  const token = newShareToken();
+  await db.update(proposals).set({ shareToken: token }).where(and(eq(proposals.id, proposalId), sql`${proposals.shareToken} IS NULL`));
+  const [after] = await db.select({ token: proposals.shareToken }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  return after?.token ?? null;
+}
+
+/** Marks a draft as sent (and makes sure it has a link). Later statuses are left alone. */
+export async function markProposalSent(proposalId: number) {
+  const token = await ensureShareToken(proposalId);
+  if (!token) return null;
+  const db = getDb();
+  const [changed] = await db
+    .update(proposals)
+    .set({ status: "sent", sentAt: sql`(CURRENT_TIMESTAMP)` })
+    .where(and(eq(proposals.id, proposalId), eq(proposals.status, "draft")))
+    .returning({ id: proposals.id });
+  if (changed) await db.insert(events).values({ proposalId, type: "sent" });
+  return token;
+}
+
+/** Everything the public page shows for one token, and nothing else: no ids of other records, no internal fields. */
+export async function getPublicProposal(token: string) {
+  const db = getDb();
+  const [p] = await db
+    .select({
+      id: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      status: proposals.status,
+      currency: proposals.currency,
+      discountBp: proposals.discountBp,
+      taxRateBp: proposals.taxRateBp,
+      validUntil: proposals.validUntil,
+      sentAt: proposals.sentAt,
+      acceptedAt: proposals.acceptedAt,
+      acceptedByName: proposals.acceptedByName,
+      declinedAt: proposals.declinedAt,
+      clientName: clients.name,
+      clientCompany: clients.company,
+      businessName: businesses.name,
+      businessLegalName: businesses.legalName,
+      businessAddress: businesses.address,
+      businessAccent: businesses.accent,
+      hasLogo: sql<number>`${businesses.logoKey} IS NOT NULL`,
+    })
+    .from(proposals)
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+    .where(eq(proposals.shareToken, token))
+    .limit(1);
+  if (!p) return null;
+  const [secs, lines] = await Promise.all([listSections(p.id), listLineItems(p.id)]);
+  return { proposal: p, sections: secs, lines };
+}
+
+export async function getLogoKeyByToken(token: string) {
+  const [row] = await getDb()
+    .select({ key: businesses.logoKey })
+    .from(proposals)
+    .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+    .where(eq(proposals.shareToken, token))
+    .limit(1);
+  return row?.key ?? null;
+}
+
+/** Counts one client view: first view time, view count, sent becomes viewed, and a timeline entry. */
+export async function recordProposalView(proposalId: number) {
+  const db = getDb();
+  const [row] = await db
+    .update(proposals)
+    .set({
+      viewCount: sql`${proposals.viewCount} + 1`,
+      firstViewedAt: sql`COALESCE(${proposals.firstViewedAt}, CURRENT_TIMESTAMP)`,
+    })
+    .where(eq(proposals.id, proposalId))
+    .returning({ viewCount: proposals.viewCount, status: proposals.status });
+  if (!row) return;
+  const next = statusAfterView(row.status);
+  if (next !== row.status) await db.update(proposals).set({ status: next }).where(and(eq(proposals.id, proposalId), eq(proposals.status, row.status)));
+  await db.insert(events).values({ proposalId, type: "viewed", metaJson: JSON.stringify({ n: row.viewCount }) });
+}
+
+export async function listEvents(proposalId: number) {
+  return getDb().select().from(events).where(eq(events.proposalId, proposalId)).orderBy(desc(events.at), desc(events.id));
+}
+
+/** True when the proposal exists and is frozen by acceptance. Edit actions check this before writing. */
+export async function isProposalLocked(proposalId: number) {
+  const [row] = await getDb().select({ status: proposals.status }).from(proposals).where(eq(proposals.id, proposalId)).limit(1);
+  return !row || isLocked(row.status);
+}
+
+export type RespondResult = { ok: true } | { ok: false; reason: "missing" | "closed" };
+
+/** Accepts the proposal behind a token once: records the signer, time and IP, keeps the chosen optional items, and locks it. */
+export async function acceptProposal(token: string, input: { name: string; ip: string | null; selectedIds: unknown }): Promise<RespondResult> {
+  const db = getDb();
+  const [p] = await db.select({ id: proposals.id, status: proposals.status }).from(proposals).where(eq(proposals.shareToken, token)).limit(1);
+  if (!p) return { ok: false, reason: "missing" };
+  if (!canRespond(p.status)) return { ok: false, reason: "closed" };
+  const [changed] = await db
+    .update(proposals)
+    .set({ status: "accepted", acceptedAt: sql`(CURRENT_TIMESTAMP)`, acceptedByName: input.name, acceptedIp: input.ip })
+    .where(and(eq(proposals.id, p.id), inArray(proposals.status, ["sent", "viewed"])))
+    .returning({ id: proposals.id });
+  if (!changed) return { ok: false, reason: "closed" };
+  const optional = await db
+    .select({ id: lineItems.id })
+    .from(lineItems)
+    .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+    .where(and(eq(sections.proposalId, p.id), eq(lineItems.optional, true)));
+  const optionalIds = optional.map((o) => o.id);
+  const chosen = pickSelectable(input.selectedIds, optionalIds);
+  const event = db.insert(events).values({ proposalId: p.id, type: "accepted", metaJson: JSON.stringify({ by: input.name, items: chosen.length }) });
+  if (optionalIds.length === 0) {
+    await event;
+  } else {
+    await db.batch([
+      db.update(lineItems).set({ selected: false }).where(inArray(lineItems.id, optionalIds)),
+      ...(chosen.length ? [db.update(lineItems).set({ selected: true }).where(inArray(lineItems.id, chosen))] : []),
+      event,
+    ]);
+  }
+  return { ok: true };
+}
+
+export async function declineProposal(token: string, reason: string): Promise<RespondResult> {
+  const db = getDb();
+  const [p] = await db.select({ id: proposals.id, status: proposals.status }).from(proposals).where(eq(proposals.shareToken, token)).limit(1);
+  if (!p) return { ok: false, reason: "missing" };
+  if (!canRespond(p.status)) return { ok: false, reason: "closed" };
+  const [changed] = await db
+    .update(proposals)
+    .set({ status: "declined", declinedAt: sql`(CURRENT_TIMESTAMP)`, declineReason: reason || null })
+    .where(and(eq(proposals.id, p.id), inArray(proposals.status, ["sent", "viewed"])))
+    .returning({ id: proposals.id });
+  if (!changed) return { ok: false, reason: "closed" };
+  await db.insert(events).values({ proposalId: p.id, type: "declined", metaJson: reason ? JSON.stringify({ reason }) : null });
+  return { ok: true };
+}
+
+/** Moves sent or viewed proposals past their valid-until date to expired, with a timeline entry. Safe to call on every page load. */
+export async function expireDueProposals(now = new Date()) {
+  const db = getDb();
+  const due = await db
+    .select({ id: proposals.id })
+    .from(proposals)
+    .where(and(inArray(proposals.status, ["sent", "viewed"]), sql`${proposals.validUntil} IS NOT NULL`, sql`${proposals.validUntil} < ${chicagoDate(now)}`));
+  for (const { id } of due) {
+    const [changed] = await db
+      .update(proposals)
+      .set({ status: "expired" })
+      .where(and(eq(proposals.id, id), inArray(proposals.status, ["sent", "viewed"])))
+      .returning({ id: proposals.id });
+    if (changed) await db.insert(events).values({ proposalId: id, type: "expired" });
+  }
+}
+
+/** Sets or clears the valid-until date. Extending an expired proposal reopens it as sent or viewed. */
+export async function setValidUntil(proposalId: number, validUntil: string | null, now = new Date()) {
+  const db = getDb();
+  await db.update(proposals).set({ validUntil }).where(eq(proposals.id, proposalId));
+  if (validUntil && validUntil >= chicagoDate(now)) {
+    await db
+      .update(proposals)
+      .set({ status: sql`CASE WHEN ${proposals.firstViewedAt} IS NULL THEN 'sent' ELSE 'viewed' END` })
+      .where(and(eq(proposals.id, proposalId), eq(proposals.status, "expired")));
+  }
+  await expireDueProposals(now);
+}
+
+/** Viewed proposals the client has left unanswered for 3+ days, longest quiet first. */
+export async function listFollowUps(now = new Date()) {
+  const rows = await getDb()
+    .select({
+      id: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      status: proposals.status,
+      firstViewedAt: proposals.firstViewedAt,
+      viewCount: proposals.viewCount,
+      clientName: clients.name,
+      clientCompany: clients.company,
+    })
+    .from(proposals)
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .where(eq(proposals.status, "viewed"))
+    .orderBy(asc(proposals.firstViewedAt));
+  return rows.filter((r) => needsFollowUp(r.status, r.firstViewedAt, now));
+}
+
+/** Every proposal with its priced line items, for the dashboard numbers. */
+export async function listDashboardProposals(): Promise<DashProposal[]> {
+  const db = getDb();
+  const [rows, items] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        status: proposals.status,
+        currency: proposals.currency,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        sentAt: proposals.sentAt,
+        acceptedAt: proposals.acceptedAt,
+      })
+      .from(proposals),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id)),
+  ]);
+  const byProposal = new Map<number, DashProposal["items"]>();
+  for (const { proposalId, ...item } of items) byProposal.set(proposalId, [...(byProposal.get(proposalId) ?? []), item]);
+  return rows.map(({ id, ...p }) => ({ ...p, items: byProposal.get(id) ?? [] }));
+}
+
+/** Latest timeline entries across all proposals, newest first. */
+export async function listRecentActivity(limit = 8) {
+  return getDb()
+    .select({
+      id: events.id,
+      type: events.type,
+      at: events.at,
+      metaJson: events.metaJson,
+      proposalId: proposals.id,
+      number: proposals.number,
+      title: proposals.title,
+      clientName: clients.name,
+    })
+    .from(events)
+    .innerJoin(proposals, eq(events.proposalId, proposals.id))
+    .innerJoin(clients, eq(proposals.clientId, clients.id))
+    .orderBy(desc(events.at), desc(events.id))
+    .limit(limit);
+}
+
+/** Light rows for the command palette: the 50 newest proposals and every client. */
+export async function listPaletteData() {
+  const db = getDb();
+  const [props, cls] = await Promise.all([
+    db
+      .select({ id: proposals.id, number: proposals.number, title: proposals.title, status: proposals.status, clientName: clients.name })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .orderBy(desc(proposals.id))
+      .limit(50),
+    db.select({ id: clients.id, name: clients.name, company: clients.company }).from(clients).orderBy(asc(clients.name)),
+  ]);
+  return { proposals: props, clients: cls };
+}
+
+/** Every proposal with its priced items, plus each line with its section, for CSV export. */
+export async function listExportData(): Promise<{ proposals: ExportProposal[]; lines: ExportLine[] }> {
+  const db = getDb();
+  const [rows, lines] = await Promise.all([
+    db
+      .select({
+        id: proposals.id,
+        number: proposals.number,
+        title: proposals.title,
+        status: proposals.status,
+        currency: proposals.currency,
+        clientName: clients.name,
+        clientCompany: clients.company,
+        businessName: businesses.name,
+        discountBp: proposals.discountBp,
+        taxRateBp: proposals.taxRateBp,
+        validUntil: proposals.validUntil,
+        sentAt: proposals.sentAt,
+        firstViewedAt: proposals.firstViewedAt,
+        viewCount: proposals.viewCount,
+        acceptedAt: proposals.acceptedAt,
+        acceptedByName: proposals.acceptedByName,
+        declinedAt: proposals.declinedAt,
+        declineReason: proposals.declineReason,
+      })
+      .from(proposals)
+      .innerJoin(clients, eq(proposals.clientId, clients.id))
+      .innerJoin(businesses, eq(proposals.businessId, businesses.id))
+      .orderBy(asc(proposals.number)),
+    db
+      .select({
+        proposalId: sections.proposalId,
+        sectionTitle: sections.title,
+        description: lineItems.description,
+        qtyMilli: lineItems.qtyMilli,
+        unitPriceCents: lineItems.unitPriceCents,
+        recurring: lineItems.recurring,
+        optional: lineItems.optional,
+        selected: lineItems.selected,
+      })
+      .from(lineItems)
+      .innerJoin(sections, eq(lineItems.sectionId, sections.id))
+      .orderBy(asc(sections.proposalId), asc(sections.position), asc(lineItems.position), asc(lineItems.id)),
+  ]);
+  const byProposal = new Map<number, ExportProposal["items"]>();
+  for (const l of lines) byProposal.set(l.proposalId, [...(byProposal.get(l.proposalId) ?? []), l]);
+  return { proposals: rows.map((r) => ({ ...r, clientCompany: r.clientCompany ?? "", items: byProposal.get(r.id) ?? [] })), lines };
 }

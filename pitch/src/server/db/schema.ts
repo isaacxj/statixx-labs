@@ -61,7 +61,7 @@ export const proposals = sqliteTable(
     declineReason: text("decline_reason"),
     ...timestamps,
   },
-  (t) => [uniqueIndex("proposals_number_unique").on(t.number)],
+  (t) => [uniqueIndex("proposals_number_unique").on(t.number), uniqueIndex("proposals_share_token_unique").on(t.shareToken)],
 );
 
 export const SECTION_KINDS = ["text", "pricing"] as const;
@@ -109,6 +109,18 @@ export const templates = sqliteTable("templates", {
   ...timestamps,
 });
 
+export const EVENT_TYPES = ["created", "edited", "sent", "viewed", "accepted", "declined", "expired"] as const;
+export type EventType = (typeof EVENT_TYPES)[number];
+
+export const events = sqliteTable("events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  proposalId: integer("proposal_id").notNull().references(() => proposals.id, { onDelete: "cascade" }),
+  type: text("type", { enum: EVENT_TYPES }).notNull(),
+  at: text("at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  metaJson: text("meta_json"),
+  ...timestamps,
+});
+
 export type Business = typeof businesses.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Proposal = typeof proposals.$inferSelect;
@@ -116,3 +128,4 @@ export type Section = typeof sections.$inferSelect;
 export type LineItem = typeof lineItems.$inferSelect;
 export type LibrarySection = typeof librarySections.$inferSelect;
 export type Template = typeof templates.$inferSelect;
+export type ProposalEvent = typeof events.$inferSelect;

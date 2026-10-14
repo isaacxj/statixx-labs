@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Textarea } from "@/components/ui/input";
-import { saveClient, type ClientFormState } from "@/app/clients/actions";
+import { saveClient, type ClientFormState } from "@/app/(app)/clients/actions";
 import type { Client } from "@/server/db/schema";
 
 export function ClientForm({ client }: { client?: Client }) {
