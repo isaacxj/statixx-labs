@@ -6,3 +6,8 @@ import * as schema from "./schema";
 export function getDb() {
   return drizzle(env.DB, { schema });
 }
+
+/** The raw binding, for statements that must run together in one atomic `batch`. */
+export function getD1() {
+  return env.DB;
+}
